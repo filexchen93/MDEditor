@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-08-23T13:46:32.732Z",
+  "sources": [
+    {
+      "name": "CommonMark 0.31.2",
+      "url": "https://spec.commonmark.org/0.31.2/spec.json",
+      "file": "commonmark-0.31.2.json",
+      "format": "json",
+      "examples": 652,
+      "sha256": "d431b29d97b6f73e69d547109cf5081578fac931e72afe95639ebe766c1b2a20"
+    },
+    {
+      "name": "GitHub Flavored Markdown 0.29.0.gfm.13",
+      "url": "https://raw.githubusercontent.com/github/cmark-gfm/0.29.0.gfm.13/test/spec.txt",
+      "file": "gfm-0.29.0.gfm.13.json",
+      "format": "spec-text",
+      "examples": 648,
+      "sha256": "7d8e5814befec287ac116786d81ff14e0adc9b13295b4494649e995408fd871c"
+    }
+  ]
+}

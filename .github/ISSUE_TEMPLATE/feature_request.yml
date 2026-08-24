@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose an improvement within the current roadmap
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the workflow or failure, not only a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+    validations:
+      required: true
+  - type: textarea
+    id: fidelity
+    attributes:
+      label: Source fidelity and safety impact
+      description: Could this change source text, filesystem access, rendering trust, selections or IME behavior?
+    validations:
+      required: true

@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "paths": {
+      "@mdeditor/document-session": [
+        "./packages/document-session/src/index.ts"
+      ],
+      "@mdeditor/editor-core": ["./packages/editor-core/src/index.ts"],
+      "@mdeditor/markdown": ["./packages/markdown/src/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["*.ts", "tests/**/*.ts"]
+}

@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+
+storeDir: .pnpm-store
+
+overrides:
+  baseline-browser-mapping: 2.11.17
+
+onlyBuiltDependencies:
+  - esbuild

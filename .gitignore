@@ -1,0 +1,31 @@
+# Local implementation design; intentionally kept out of version control.
+/docs/MDEDITOR_DESIGN.local.md
+
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Test and benchmark output
+playwright-report/
+test-results/
+tests/performance/results/
+
+# Tauri and local tooling
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+.pnpm-store/
+.corepack/
+.tools/
+.playwright-browsers/
+.cargo-local/
+.rustup-local/
+
+# Editors and operating systems
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
