@@ -20,13 +20,13 @@ source editor and M2 progressive-rendering layer.
 - 1,000-image viewport corpus using blocked image URLs (widgets render without network access)
 
 Run `pnpm benchmark`. The browser harness records open-to-editable time,
-source-to-hybrid activation, dispatch-to-paint P50/P95, long-task count and
-duration, long-line opening, and image-widget counts before and after a viewport
-change. It fails when the documented budgets are exceeded. Results are only
-comparable when the device, OS, power mode, build mode, revision and corpus hash
-are reported.
+source-to-hybrid activation, complete-outline readiness and item count,
+dispatch-to-paint P50/P95, long-task count and duration, long-line opening, and
+image-widget counts before and after a viewport change. It fails when the
+documented budgets are exceeded. Results are only comparable when the device,
+OS, power mode, build mode, revision and corpus hash are reported.
 
-## M2 budgets
+## M2/M3 budgets
 
 | Measurement                                       |          Budget |
 | ------------------------------------------------- | --------------: |
@@ -34,6 +34,8 @@ are reported.
 | 10 MiB open-to-editable                           |    <= 10,000 ms |
 | 1 MiB dispatch-to-paint P95                       |       <= 250 ms |
 | 10 MiB dispatch-to-paint P95                      |       <= 500 ms |
+| 1 MiB complete outline ready                      |     <= 3,000 ms |
+| 10 MiB complete outline ready                     |    <= 10,000 ms |
 | 1 MiB long-line open-to-editable                  |     <= 4,000 ms |
 | Visible image widgets at either measured viewport | <= 100 of 1,000 |
 
@@ -43,16 +45,18 @@ release benchmark must still explain a new longest task above 500 ms.
 
 ## Latest local result
 
-Captured 2026-08-24 on Windows 11, Intel Core i7-10510U, 8 logical CPUs,
+Captured 2026-08-25 on Windows 11, Intel Core i7-10510U, 8 logical CPUs,
 Node.js 24.18.0, Vite development harness in headless Chromium, uncommitted
 worktree.
 
-| Corpus | SHA-256                                                            |     Open |   Hybrid | Dispatch P50 | Dispatch P95 |
-| ------ | ------------------------------------------------------------------ | -------: | -------: | -----------: | -----------: |
-| 1 MiB  | `e33dad9ab292ecd9768f18fdc304b1df1fbadf2f669407087aa18ee9d40dab38` | 157.6 ms | 130.9 ms |      33.5 ms |      34.6 ms |
-| 10 MiB | `abaf645896aa48eb0d1be689b351c6e42a8343a0b3ff7088ec3ccaa09b5e0b92` | 108.4 ms |  30.2 ms |      32.7 ms |      34.4 ms |
+| Corpus | SHA-256                                                            |     Open |  Hybrid | Outline ready | Outline items | Dispatch P50 | Dispatch P95 |
+| ------ | ------------------------------------------------------------------ | -------: | ------: | ------------: | ------------: | -----------: | -----------: |
+| 1 MiB  | `e33dad9ab292ecd9768f18fdc304b1df1fbadf2f669407087aa18ee9d40dab38` | 107.0 ms | 51.0 ms |      439.1 ms |         5,637 |      33.8 ms |      60.5 ms |
+| 10 MiB | `abaf645896aa48eb0d1be689b351c6e42a8343a0b3ff7088ec3ccaa09b5e0b92` |  71.8 ms | 31.7 ms |    3,441.0 ms |        56,375 |     300.9 ms |     434.4 ms |
 
-The 1 MiB long-line corpus opened in 81.4 ms. Both measured viewports mounted 9
-of 1,000 image widgets. Five long tasks totalled 519 ms; the longest was 144 ms.
-No budget was breached. These development-harness numbers validate the gate and
-are not a substitute for a production-build release benchmark.
+The 1 MiB long-line corpus opened in 121.5 ms. Both measured viewports mounted 9
+of 1,000 image widgets. Fifty long tasks totalled 8,700 ms while parsing
+and collecting the complete large outlines; incremental collection kept the
+longest individual task to 319 ms. No budget was breached. These
+development-harness numbers validate the gate and are not a substitute for a
+production-build release benchmark.

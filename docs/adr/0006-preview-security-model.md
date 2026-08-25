@@ -11,6 +11,14 @@ Markdown may contain raw HTML, dangerous URLs, remote media and diagram programs
 
 Treat all document content as untrusted. Sanitize preview HTML with an explicit allowlist, reject scripts, event attributes and dangerous URL protocols, and enforce a restrictive CSP. Open approved external protocols in the system browser. Preview transformations never write back to source. Complex renderers run with bounded inputs and stable error fallbacks.
 
+KaTeX runs with trust disabled, strict errors and bounded expansion and sizing.
+Mermaid runs at the strict security level with bounded source and graph size;
+its generated SVG is parsed as XML and stripped of scripts, event handlers and
+non-fragment links before it enters the live document. Both renderers are loaded
+on demand behind an abortable editor interface. A renderer exception changes
+only that preview to a text-only error state and never dispatches an editor
+transaction.
+
 ## Alternatives considered
 
 - Disable all raw HTML in source: rejected because preservation is required for lossless editing.

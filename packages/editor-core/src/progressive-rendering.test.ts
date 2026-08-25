@@ -8,7 +8,10 @@ import {
 import { Compartment, EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
-import { createSourceEditorState } from "./source-editor.js";
+import {
+  createEditorPreferencesExtension,
+  createSourceEditorState,
+} from "./source-editor.js";
 import {
   collectProgressiveDecorations,
   createEditorModeExtension,
@@ -23,6 +26,11 @@ describe("progressive Markdown rendering", () => {
       "> quoted [link](https://example.com)",
       "",
       "- list item",
+      "- [ ] open task",
+      "",
+      "| Column | Value |",
+      "| --- | --- |",
+      "| A | ~~removed~~ |",
       "",
       "![diagram](https://example.com/diagram.png)",
       "",
@@ -42,6 +50,9 @@ describe("progressive Markdown rendering", () => {
         "link",
         "quote-line",
         "list-line",
+        "task",
+        "table-line",
+        "strikethrough",
         "image",
         "code",
         "syntax",
@@ -72,6 +83,29 @@ describe("progressive Markdown rendering", () => {
     expect(sanitizeImageSource("data:image/png;base64,iVBORw0KGgo=")).toBe(
       "data:image/png;base64,iVBORw0KGgo=",
     );
+  });
+
+  it("derives isolated KaTeX and Mermaid blocks without changing source", () => {
+    const text = [
+      "```math",
+      "x^2 + y^2 = z^2",
+      "```",
+      "",
+      "```mermaid",
+      "flowchart LR",
+      "A --> B",
+      "```",
+    ].join("\n");
+    const state = createSourceEditorState({ text, mode: "hybrid" });
+    const blocks = collectProgressiveDecorations(state).filter(
+      ({ kind }) => kind === "complex-block",
+    );
+
+    expect(blocks.map(({ complex }) => complex)).toEqual([
+      { kind: "katex", source: "x^2 + y^2 = z^2" },
+      { kind: "mermaid", source: "flowchart LR\nA --> B" },
+    ]);
+    expect(state.sliceDoc()).toBe(text);
   });
 
   it("only visits the requested viewport range", () => {
@@ -134,5 +168,39 @@ describe("progressive Markdown rendering", () => {
       }),
     ).toBe(true);
     expect(state.sliceDoc()).toBe("alpha 中文");
+  });
+
+  it("reconfigures editor preferences without touching text or history", () => {
+    const preferences = new Compartment();
+    let state = EditorState.create({
+      doc: "draft",
+      extensions: [
+        history(),
+        preferences.of(
+          createEditorPreferencesExtension({
+            fontSize: 16,
+            lineWrapping: false,
+          }),
+        ),
+      ],
+    });
+    state = state.update({
+      changes: { from: 5, insert: " text" },
+      selection: { anchor: 10 },
+    }).state;
+    const selection = state.selection;
+
+    state = state.update({
+      effects: preferences.reconfigure(
+        createEditorPreferencesExtension({
+          fontSize: 22,
+          lineWrapping: true,
+        }),
+      ),
+    }).state;
+
+    expect(state.sliceDoc()).toBe("draft text");
+    expect(state.selection.eq(selection)).toBe(true);
+    expect(undoDepth(state)).toBe(1);
   });
 });

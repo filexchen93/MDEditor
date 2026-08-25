@@ -2,12 +2,13 @@
 
 MDEditor is an open-source, cross-platform, local-first Markdown desktop editor. Its first priority is lossless, reliable access to Markdown source; progressive rendering is an enhancement, never the document model.
 
-The project has completed **M2 (progressive rendering)** and is ready to begin M3 common enhancements. It includes a single-document CodeMirror editor, byte-preserving UTF-8/BOM and newline handling, controlled native open/save dialogs, disk-change detection, same-directory atomic replacement, crash-recovery drafts, recent files, persistent editor settings, and a lossless source/hybrid mode. The hybrid layer progressively derives headings, emphasis, links, quotes, lists, image widgets and highlighted code without rewriting Markdown. Supported round trips are byte-identical, Windows fault injection proves atomic-save outcomes, and dedicated Chinese IME coverage verifies stable composition, selection and history.
+The project has completed **M2 (progressive rendering)** and has begun M3 common enhancements. It includes a multi-document tab workspace with independent CodeMirror histories, byte-preserving UTF-8/BOM and newline handling, controlled native open/save dialogs, disk-change detection, same-directory atomic replacement, crash-recovery workspaces, recent files, persistent editor settings, and a lossless source/hybrid mode. The hybrid layer progressively derives headings, emphasis, links, quotes, lists, image widgets and highlighted code without rewriting Markdown. Current M3 work adds accessible GFM task checkboxes, table insertion and Tab/Shift+Tab cell navigation with automatic row creation, an asynchronously derived document outline with source jump navigation, isolated on-demand KaTeX and Mermaid previews, paper/dark/system themes, and six configurable application shortcuts. Supported round trips are byte-identical, Windows fault injection proves atomic-save outcomes, and dedicated Chinese IME coverage verifies stable composition, selection and history.
 
 ## Architecture
 
 ```text
 @mdeditor/ui → @mdeditor/editor-core → @mdeditor/markdown
+             ⇢ @mdeditor/renderers (lazy KaTeX/Mermaid chunks)
              → @mdeditor/document-session
 desktop web adapter → controlled Tauri APIs
 ```
@@ -46,7 +47,7 @@ Useful commands:
 
 ## Supported scope
 
-The planned core dialect is CommonMark plus GFM tables, task lists, strikethrough and autolinks. YAML front matter, footnotes, KaTeX and Mermaid are optional later extensions. Collaboration, cloud sync, mobile clients, AI writing and a plugin marketplace are not goals for the first stable version.
+The core dialect is CommonMark plus GFM tables, task lists, strikethrough and autolinks. KaTeX and Mermaid are registered optional fenced-block extensions whose browser code loads only when a matching preview is needed; YAML front matter and footnotes remain possible later extensions. Collaboration, cloud sync, mobile clients, AI writing and a plugin marketplace are not goals for the first stable version.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change and [SECURITY.md](SECURITY.md) for private vulnerability reporting. Architecture decisions live in [`docs/adr`](docs/adr); current gates and platform targets are recorded in the [roadmap](docs/ROADMAP.md) and [platform baseline](docs/PLATFORM_SUPPORT.md).
 

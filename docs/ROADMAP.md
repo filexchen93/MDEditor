@@ -29,6 +29,28 @@ quality gates pass.
 
 GFM table and task interactions, outline, KaTeX, Mermaid, tabs/workspaces, export, themes and configurable shortcuts. Complex renderers must fail independently of source editing and save.
 
+Status: **in progress**. The editor now uses its declared GFM parser in both
+source and hybrid modes. Task markers become accessible, undoable checkboxes in
+hybrid mode; tables can be inserted from the toolbar and navigated across every
+cell with Tab / Shift+Tab, with a new row created after the final cell. These
+interactions edit only canonical Markdown transactions and have dedicated unit,
+browser, Unicode-offset and empty-cell coverage. The document outline derives
+all ATX and Setext headings from the complete syntax tree in cancellable 20 ms
+time slices, excludes headings inside fenced code, and supports source-focused
+jump navigation with live updates. KaTeX and Mermaid fenced blocks load in
+separate browser chunks and render through an abortable interface; input bounds,
+strict renderer settings and post-render SVG filtering contain each failure in
+its own text-only fallback without changing source or history. The tab workspace
+keeps a separate CodeMirror instance, selection, undo history and document
+session for every open file; dirty closes require confirmation, duplicate paths
+activate their existing tab, and a versioned recovery workspace atomically
+captures every dirty tab while migrating legacy single-document snapshots.
+Export remains open. Paper, dark and system themes now share a complete
+semantic color-token layer across the shell, source editor and hybrid widgets.
+Six persisted application shortcuts are configurable from validated choices;
+conflicts are rejected, and editor preferences reconfigure without replacing
+the document, selection or undo history.
+
 ## M4 — Ecosystem and release maturity
 
 Permissioned plugin API, optional sync boundary, accessibility completion, signed packages, updates and a stable release process. Plugin work starts only after document and editing APIs are stable.

@@ -11,6 +11,7 @@ export {
 } from "./session.js";
 export {
   createRecoverySnapshot,
+  createWorkspaceRecoverySnapshot,
   parseRecoverySnapshot,
   serializeRecoverySnapshot,
 } from "./recovery.js";
@@ -23,6 +24,7 @@ export type {
   LineEnding,
   OpenedDocumentFile,
   ReadOnlyReason,
+  RecoveryDocument,
   RecoverySnapshot,
   SaveDocumentAsRequest,
   SaveDocumentRequest,

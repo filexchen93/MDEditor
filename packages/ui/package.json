@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@mdeditor/document-session": "workspace:*",
-    "@mdeditor/editor-core": "workspace:*"
+    "@mdeditor/editor-core": "workspace:*",
+    "@mdeditor/renderers": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0"

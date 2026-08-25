@@ -1,0 +1,28 @@
+{
+  "name": "@mdeditor/renderers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./katex": {
+      "types": "./dist/katex.d.ts",
+      "default": "./dist/katex.js"
+    },
+    "./mermaid": {
+      "types": "./dist/mermaid.d.ts",
+      "default": "./dist/mermaid.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@mdeditor/editor-core": "workspace:*",
+    "katex": "0.18.4",
+    "mermaid": "11.17.1"
+  }
+}

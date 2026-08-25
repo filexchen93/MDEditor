@@ -5,6 +5,8 @@ interface CorpusResult {
   readonly hash: string;
   readonly openToEditableMs: number;
   readonly hybridActivationMs: number;
+  readonly outlineReadyMs: number;
+  readonly outlineItems: number;
   readonly dispatchToPaintP50Ms: number;
   readonly dispatchToPaintP95Ms: number;
 }
@@ -93,6 +95,20 @@ async function profileCorpus(bytes: number): Promise<CorpusResult> {
   await nextPaint();
   const hybridActivationMs = performance.now() - hybridStartedAt;
 
+  const outlineStartedAt = performance.now();
+  const outlineItems = await new Promise<number>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      editor.setOutlineListener(null);
+      reject(new Error(`Outline did not finish for ${bytes} bytes.`));
+    }, 30_000);
+    editor.setOutlineListener((items) => {
+      window.clearTimeout(timeout);
+      editor.setOutlineListener(null);
+      resolve(items.length);
+    });
+  });
+  const outlineReadyMs = performance.now() - outlineStartedAt;
+
   const dispatchDurations: number[] = [];
   for (let iteration = 0; iteration < 15; iteration += 1) {
     const dispatchStartedAt = performance.now();
@@ -116,6 +132,8 @@ async function profileCorpus(bytes: number): Promise<CorpusResult> {
     hash: await sha256(text),
     openToEditableMs,
     hybridActivationMs,
+    outlineReadyMs,
+    outlineItems,
     dispatchToPaintP50Ms: percentile(dispatchDurations, 0.5),
     dispatchToPaintP95Ms: percentile(dispatchDurations, 0.95),
   };
@@ -204,6 +222,19 @@ window.runMDEditorBenchmark = async () => {
   }
   if (tenMiB !== undefined && tenMiB.dispatchToPaintP95Ms > 500) {
     breaches.push("10 MiB dispatch-to-paint P95 exceeded 500 ms");
+  }
+  if (oneMiB !== undefined && oneMiB.outlineReadyMs > 3000) {
+    breaches.push("1 MiB outline-ready exceeded 3000 ms");
+  }
+  if (tenMiB !== undefined && tenMiB.outlineReadyMs > 10000) {
+    breaches.push("10 MiB outline-ready exceeded 10000 ms");
+  }
+  if (
+    oneMiB !== undefined &&
+    tenMiB !== undefined &&
+    (oneMiB.outlineItems === 0 || tenMiB.outlineItems <= oneMiB.outlineItems)
+  ) {
+    breaches.push("Outline item counts did not scale with the fixed corpora");
   }
   if (longLine.openToEditableMs > 4000) {
     breaches.push("1 MiB long-line open-to-editable exceeded 4000 ms");

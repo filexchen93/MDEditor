@@ -53,11 +53,16 @@ export interface SavedDocumentFile {
   readonly diskFingerprint: string;
 }
 
-export interface RecoverySnapshot {
-  readonly version: 1;
-  readonly capturedAt: string;
+export interface RecoveryDocument {
   readonly text: string;
   readonly session: DocumentSession;
+}
+
+export interface RecoverySnapshot {
+  readonly version: 2;
+  readonly capturedAt: string;
+  readonly activeId: string;
+  readonly documents: readonly RecoveryDocument[];
 }
 
 /**
