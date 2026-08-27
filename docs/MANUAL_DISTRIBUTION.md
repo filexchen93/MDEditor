@@ -4,6 +4,11 @@ This project is currently distributed for personal and open-source use. Builds
 are created locally and uploaded manually. Code signing, automatic updates and an
 automated release pipeline are intentionally deferred.
 
+Packaging is a delivery checklist, not the active product-development priority.
+Unless an installer is immediately needed for testing, complete the Markdown
+authoring, workspace and output milestones in the roadmap before spending time on
+package polish.
+
 ## Current distribution target
 
 - Primary artifact: unsigned Windows x64 installer.

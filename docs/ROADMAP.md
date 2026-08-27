@@ -57,82 +57,84 @@ rejected, and editor preferences reconfigure without replacing the document,
 selection or undo history. Unit, browser, production-build and native atomic
 write gates pass.
 
-## M4 — Personal open-source usability and manual distribution
+## Future direction — Typora-class capability without commercialization
 
-The current goal is a dependable editor for personal use and open-source sharing,
-not a signed, automatically updating commercial release. Windows x64 is the first
-manual package target. macOS and Linux remain source and CI compatibility targets;
-installers are produced only when there is a concrete need and a machine available
-for smoke testing.
+The project remains personal and open source, but its Markdown product capability
+is now expected to reach the level of a mature commercial desktop editor. The
+benchmark and implementation decisions are maintained in
+[Typora capability parity plan](TYPORA_PARITY_PLAN.md).
 
-Status: **in progress**. The versioned plugin contract and the first workspace
-accessibility improvements are complete. The remaining work is ordered by direct
-value to personal use rather than ecosystem breadth.
+Commercial infrastructure is not part of this goal. Signing, automatic updates,
+release channels, accounts, licensing and automated publication remain deferred.
 
-### Priority 1 — Core usability and accessibility
+## M4 — Typora-class single-document authoring
 
-- Add automated WCAG checks for the main editor workflow and fix actionable
-  violations.
-- Verify keyboard-only use, high-contrast/forced-color display, zoom and narrow
-  window behavior on Windows.
-- Keep file safety, crash recovery, byte preservation and existing regression
-  gates ahead of new feature count.
-- Document known limitations instead of blocking personal builds on exhaustive
-  certification across every assistive technology and operating system.
+Status: **in progress**. The current source-safe hybrid layer is the foundation,
+not the finished authoring experience.
 
-The active document already has an associated tabpanel, deterministic focus after
-tab close, a roving Markdown toolbar, persistent polite status announcements,
-application busy state, visible focus treatment and Escape-dismissable settings
-and export disclosures. Browser coverage exercises these semantics and focus
-transitions.
+- Implement live preview with active Markdown structures expanding back to
+  editable source without introducing a second document state.
+- Add transaction-based formatting commands for common inline and block syntax.
+- Complete table row, column, alignment, resize and reorder operations.
+- Add footnotes, YAML front matter, TOC, GitHub alerts, inline/display math and a
+  shared editor/export Markdown profile.
+- Expose and verify find/replace; add outline filtering, word/character/line and
+  reading-time statistics, focus/typewriter modes and Markdown auto-pairing.
+- Preserve IME correctness, undo history, byte fidelity, renderer isolation and
+  the existing 1/10 MiB performance gates.
 
-### Priority 2 — Unsigned manual packages
+Exit gate: the documented single-file writing scenario can be completed in live
+preview without falling back to source mode, and every operation remains a
+reversible edit of canonical Markdown text.
 
-- Replace placeholder versions before a shared build and enable the required
-  Tauri Windows bundle target.
-- Produce an unsigned Windows installer locally only after frontend, browser and
-  native quality gates pass.
-- Smoke-test install, launch, open, edit, save, recovery and uninstall on a clean
-  or disposable Windows environment.
-- Generate a SHA-256 checksum and short release notes for every uploaded artifact.
-- Upload installers and checksums manually to the Git hosting release/download
-  area. Do not keep generated installers in ordinary source history.
-- Clearly disclose that unsigned builds can trigger Windows SmartScreen or
-  unknown-publisher warnings.
+## M5 — Folder, link and image workflows
 
-The checklist is maintained in
-[Manual unsigned distribution](MANUAL_DISTRIBUTION.md).
+- Add an explicitly authorized folder workspace with a virtualized file tree,
+  file operations and filesystem watching.
+- Add fuzzy quick open and cancellable cross-file search with bounded native
+  traversal.
+- Support internal headings, local Markdown files and external URL navigation.
+- Add clipboard, drag/drop and picker image import; copy assets according to a
+  workspace policy and write portable relative links.
+- Add reference-aware image rename/move/copy and broken-link inspection.
+- Add conservative configurable auto-save that never bypasses external-change
+  fingerprints; retain recovery snapshots for untitled and dirty documents.
+- Add an ADR and adversarial tests for authorized roots, path traversal, symbolic
+  links, conflicts and partial failures.
 
-### Priority 3 — Optional capabilities driven by personal need
+Exit gate: a real documentation repository with Chinese paths, nested Markdown
+files and local images can be searched, edited and recovered without data loss or
+access outside the approved root.
 
-The permissioned plugin contract continues to validate manifests, grants and
-document edits, but third-party execution, installation UI and package
-authenticity are deferred until a real plugin is needed. The optional sync
-boundary is also deferred until a concrete provider or multi-device workflow is
-required. Neither blocks manual installer distribution.
+## M6 — Output fidelity, themes and manual distribution
 
-### Deferred for the current phase
+- Use one rendering pipeline for live preview, styled/unstyled HTML, image and
+  print/PDF output, including footnotes, TOC, alerts, math, Mermaid and local
+  images.
+- Add useful PDF controls and an optional external Pandoc adapter for DOCX.
+- Add verified system spellcheck, installable scoped themes and an explicitly
+  trusted local-CSS option.
+- Render a safe subset of inline and block HTML while continuing to reject
+  scripts, event handlers and arbitrary iframe execution.
+- Complete automated accessibility checks and Windows keyboard, high-contrast,
+  zoom and narrow-window verification.
+- Replace placeholder versions, enable the Windows x64 bundle and follow
+  [Manual unsigned distribution](MANUAL_DISTRIBUTION.md) for local builds,
+  checksums, smoke tests and manual upload.
 
-- Code signing, certificate/key management and Apple notarization.
-- Built-in automatic updates, update channels and rollback infrastructure.
-- Automated release workflows, formal release trains, provenance and publication
-  approvals.
-- A plugin marketplace, general-purpose cloud sync service and production support
-  commitments.
+Exit gate: the benchmark document is structurally and visually consistent in the
+editor, HTML, image and PDF outputs, and an unsigned Windows installer can be
+reproduced from a versioned commit and smoke-tested on a clean environment.
+Signing, updates and automated publication are explicitly not required.
 
-These items return to the roadmap only if distribution grows beyond trusted
-personal/open-source users or operating-system warnings become an adoption
-problem.
+## Deferred for the personal-open-source phase
 
-### M4 exit gate for the current phase
-
-M4 is complete when the documented quality gates pass, the unsigned Windows
-installer can be built reproducibly from a versioned commit, its checksum is
-published, and a clean-machine smoke test confirms the core local-first workflow.
-Signing, automatic updates and automated publication are explicitly not required.
-
-## Non-goals for the current personal-open-source phase
-
-Real-time collaboration, a hosted cloud sync service, AI writing, mobile clients,
-a full plugin marketplace, commercial-editor feature parity, signed distribution,
-automatic updates and support for every non-standard Markdown dialect.
+- Code signing, certificate/key management, Apple notarization and OS trust
+  programs.
+- Built-in automatic updates, stable/preview channels and rollback infrastructure.
+- Automated release publication, formal release trains and commercial support.
+- Accounts, licensing, payments, telemetry and growth infrastructure.
+- Real-time collaboration, hosted cloud sync, mobile clients and AI writing.
+- A plugin marketplace or execution of arbitrary third-party code. The existing
+  permissioned plugin contract remains available for future concrete needs.
+- Exact replication of every Typora legacy feature or every Pandoc export format.
