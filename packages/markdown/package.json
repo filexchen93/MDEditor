@@ -16,5 +16,9 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "3.4.14",
+    "marked": "16.4.2"
   }
 }

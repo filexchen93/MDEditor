@@ -10,6 +10,7 @@ type DocumentAdapter = NonNullable<AppShellProps["documentAdapter"]>;
 type OpenedDocumentFile = Awaited<ReturnType<DocumentAdapter["openDocument"]>>;
 type SaveDocumentRequest = Parameters<DocumentAdapter["saveDocument"]>[0];
 type SaveDocumentAsRequest = Parameters<DocumentAdapter["saveDocumentAs"]>[0];
+type ExportHtmlRequest = Parameters<DocumentAdapter["exportHtml"]>[0];
 type SavedDocumentFile = Awaited<ReturnType<DocumentAdapter["saveDocument"]>>;
 
 interface OpenDocumentResponse {
@@ -25,6 +26,11 @@ interface SaveDocumentPayload {
 }
 
 interface SaveDocumentAsPayload {
+  readonly bytes: number[];
+  readonly suggestedName: string;
+}
+
+interface ExportHtmlPayload {
   readonly bytes: number[];
   readonly suggestedName: string;
 }
@@ -86,6 +92,14 @@ export function createDesktopDocumentAdapter(): DocumentAdapter {
         { request: payload },
       );
       return response === null ? null : toSavedDocument(response);
+    },
+
+    async exportHtml(request: ExportHtmlRequest): Promise<string | null> {
+      const payload: ExportHtmlPayload = {
+        ...request,
+        bytes: Array.from(request.bytes),
+      };
+      return invoke<string | null>("export_html", { request: payload });
     },
 
     async loadRecoverySnapshot() {

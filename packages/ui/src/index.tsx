@@ -22,6 +22,11 @@ import {
   type OutlineItem,
   type SourceEditor,
 } from "@mdeditor/editor-core";
+import {
+  createHtmlExportName,
+  createStandaloneHtml,
+  type ExportTheme,
+} from "@mdeditor/markdown";
 
 import {
   formatShortcut,
@@ -100,6 +105,56 @@ function getDocumentName(path: string | null): string {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function resolveExportTheme(theme: AppSettings["theme"]): ExportTheme {
+  if (theme !== "system") return theme;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "paper";
+}
+
+function downloadHtml(html: string, suggestedName: string): void {
+  const url = URL.createObjectURL(
+    new Blob([html], { type: "text/html;charset=utf-8" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = suggestedName;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function printHtml(html: string): void {
+  const frame = document.createElement("iframe");
+  frame.className = "document-print-frame";
+  frame.title = "打印文档";
+  frame.setAttribute("aria-hidden", "true");
+  // `window.print()` is blocked by the sandboxed-modals flag unless the
+  // iframe explicitly opts in. Scripts remain disabled, and the exported
+  // document also carries a restrictive CSP.
+  frame.setAttribute("sandbox", "allow-modals allow-same-origin");
+  frame.addEventListener(
+    "load",
+    () => {
+      const printWindow = frame.contentWindow;
+      if (printWindow === null) {
+        frame.remove();
+        return;
+      }
+      const cleanup = () => frame.remove();
+      printWindow.addEventListener("afterprint", cleanup, { once: true });
+      window.setTimeout(cleanup, 60_000);
+      printWindow.focus();
+      printWindow.print();
+    },
+    { once: true },
+  );
+  frame.srcdoc = html;
+  document.body.append(frame);
 }
 
 export function AppShell({ documentAdapter }: AppShellProps) {
@@ -583,6 +638,54 @@ export function AppShell({ documentAdapter }: AppShellProps) {
     }
   }
 
+  function createCurrentExport(): { html: string; suggestedName: string } {
+    const sourceEditor = editor.current;
+    if (sourceEditor === null) throw new Error("编辑器尚未就绪");
+    const title = getDocumentName(session.path);
+    return {
+      html: createStandaloneHtml({
+        source: sourceEditor.getText(),
+        theme: resolveExportTheme(settings.theme),
+        title,
+      }),
+      suggestedName: createHtmlExportName(title),
+    };
+  }
+
+  async function exportHtml() {
+    if (busy || !recoveryReady) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const exported = createCurrentExport();
+      if (documentAdapter === undefined) {
+        downloadHtml(exported.html, exported.suggestedName);
+        setNotice("HTML 导出已下载");
+      } else {
+        const path = await documentAdapter.exportHtml({
+          bytes: new TextEncoder().encode(exported.html),
+          suggestedName: exported.suggestedName,
+        });
+        if (path !== null) setNotice(`HTML 已导出：${path}`);
+      }
+    } catch (error) {
+      setNotice(`HTML 导出失败：${getErrorMessage(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function printDocument() {
+    if (busy || !recoveryReady) return;
+    setNotice(null);
+    try {
+      printHtml(createCurrentExport().html);
+      setNotice("已打开系统打印，可选择另存为 PDF");
+    } catch (error) {
+      setNotice(`打印失败：${getErrorMessage(error)}`);
+    }
+  }
+
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.isComposing || event.repeat) return;
@@ -743,6 +846,26 @@ export function AppShell({ documentAdapter }: AppShellProps) {
                   </label>
                 ))}
               </fieldset>
+            </div>
+          </details>
+          <details className="settings-menu export-menu">
+            <summary>导出</summary>
+            <div className="export-panel">
+              <button
+                type="button"
+                disabled={busy || !recoveryReady}
+                onClick={() => void exportHtml()}
+              >
+                导出 HTML
+              </button>
+              <button
+                type="button"
+                disabled={busy || !recoveryReady}
+                onClick={printDocument}
+              >
+                打印 / PDF
+              </button>
+              <small>PDF 由系统打印对话框生成。</small>
             </div>
           </details>
           <button

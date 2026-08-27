@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 async function readEditorSource(editor: Locator) {
   return editor.evaluate((element) =>
@@ -469,5 +470,87 @@ test("KaTeX and Mermaid previews fail independently and preserve source", async 
 
   await page.getByRole("button", { name: "源码" }).click();
   await expect(widgets).toHaveCount(0);
+  await expect.poll(() => readEditorSource(editor)).toBe(source);
+});
+
+test("HTML and print exports are sanitized derivatives and preserve editor state", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const root = window as typeof window & {
+      __mdeditorPrintSandbox?: string;
+    };
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (
+            node instanceof HTMLIFrameElement &&
+            node.classList.contains("document-print-frame")
+          ) {
+            root.__mdeditorPrintSandbox = node.getAttribute("sandbox") ?? "";
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true });
+  });
+  const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
+  const source = [
+    "# 安全导出",
+    "",
+    "| 名称 | 值 |",
+    "| --- | --- |",
+    "| 中文 | **正常** |",
+    "",
+    "- [x] 已完成",
+    "",
+    '[危险链接](javascript:alert(1)) <img src="x" onerror="alert(2)"> <input type="text" value="伪造控件">',
+    '<script>alert(3)</script><iframe src="https://example.com"></iframe>',
+  ].join("\n");
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.insertText(source);
+  const revision = await page.getByText(/^修订 \d+$/u).textContent();
+
+  await page.getByText("导出", { exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出 HTML" }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  if (downloadPath === null) throw new Error("HTML download has no local path");
+  const html = await readFile(downloadPath, "utf8");
+
+  expect(html).toContain("<!doctype html>");
+  expect(html).toContain("Content-Security-Policy");
+  expect(html).toContain("@media print");
+  expect(html).toContain("<table>");
+  expect(html).toContain('type="checkbox"');
+  expect(html).toContain("disabled");
+  expect(html).not.toContain("<script");
+  expect(html).not.toContain("<iframe");
+  expect(html).not.toContain("onerror");
+  expect(html).not.toContain('href="javascript:');
+  expect(html).not.toContain('type="text"');
+  await expect.poll(() => readEditorSource(editor)).toBe(source);
+  await expect(
+    page.getByText(revision ?? "missing revision", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "打印 / PDF" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __mdeditorPrintSandbox?: string;
+            }
+          ).__mdeditorPrintSandbox,
+      ),
+    )
+    .toBe("allow-modals allow-same-origin");
+  await expect(
+    page.getByText("已打开系统打印，可选择另存为 PDF"),
+  ).toBeVisible();
   await expect.poll(() => readEditorSource(editor)).toBe(source);
 });

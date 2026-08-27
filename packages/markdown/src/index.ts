@@ -13,3 +13,11 @@ export type MarkdownDialect = typeof coreDialect;
 export function isCoreExtension(extension: string): boolean {
   return coreDialect.extensions.some((candidate) => candidate === extension);
 }
+
+export {
+  createHtmlExportName,
+  createStandaloneHtml,
+  renderMarkdownToSafeHtml,
+  sanitizeRenderedMarkdown,
+} from "./export.js";
+export type { ExportTheme, StandaloneHtmlOptions } from "./export.js";

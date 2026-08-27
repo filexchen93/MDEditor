@@ -190,6 +190,41 @@ textarea {
   box-shadow: 0 10px 30px var(--shadow);
 }
 
+.export-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  width: 210px;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px var(--shadow);
+}
+
+.export-panel button {
+  width: 100%;
+  padding: 7px 10px;
+}
+
+.export-panel small {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.document-print-frame {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  inset: auto 0 0 auto;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .settings-panel label {
   display: flex;
   align-items: center;

@@ -117,7 +117,14 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
 
-  packages/markdown: {}
+  packages/markdown:
+    dependencies:
+      dompurify:
+        specifier: 3.4.14
+        version: 3.4.14
+      marked:
+        specifier: 16.4.2
+        version: 16.4.2
 
   packages/renderers:
     dependencies:
@@ -139,6 +146,9 @@ importers:
       '@mdeditor/editor-core':
         specifier: workspace:*
         version: link:../editor-core
+      '@mdeditor/markdown':
+        specifier: workspace:*
+        version: link:../markdown
       '@mdeditor/renderers':
         specifier: workspace:*
         version: link:../renderers

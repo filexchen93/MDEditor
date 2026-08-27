@@ -19,6 +19,12 @@ on demand behind an abortable editor interface. A renderer exception changes
 only that preview to a text-only error state and never dispatches an editor
 transaction.
 
+Standalone HTML and print/PDF export pass rendered GFM through an explicit HTML
+element and attribute allowlist, then revalidate link and image protocols. The
+result contains no script, embeds a restrictive CSP, and is written through a
+user-selected native path with atomic replacement. Export is a disposable
+derivative and never advances the document revision or saved revision.
+
 ## Alternatives considered
 
 - Disable all raw HTML in source: rejected because preservation is required for lossless editing.

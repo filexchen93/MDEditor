@@ -53,6 +53,11 @@ export interface SavedDocumentFile {
   readonly diskFingerprint: string;
 }
 
+export interface ExportHtmlRequest {
+  readonly bytes: Uint8Array;
+  readonly suggestedName: string;
+}
+
 export interface RecoveryDocument {
   readonly text: string;
   readonly session: DocumentSession;
@@ -79,6 +84,7 @@ export interface DocumentAdapter {
   readonly saveDocumentAs: (
     request: SaveDocumentAsRequest,
   ) => Promise<SavedDocumentFile | null>;
+  readonly exportHtml: (request: ExportHtmlRequest) => Promise<string | null>;
   readonly loadRecoverySnapshot: () => Promise<RecoverySnapshot | null>;
   readonly saveRecoverySnapshot: (snapshot: RecoverySnapshot) => Promise<void>;
   readonly clearRecoverySnapshot: () => Promise<void>;

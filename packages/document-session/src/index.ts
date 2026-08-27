@@ -21,6 +21,7 @@ export type {
   DocumentAdapter,
   DocumentEncoding,
   DocumentSession,
+  ExportHtmlRequest,
   LineEnding,
   OpenedDocumentFile,
   ReadOnlyReason,

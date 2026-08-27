@@ -45,6 +45,13 @@ struct SaveDocumentAsRequest {
     suggested_name: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportHtmlRequest {
+    bytes: Vec<u8>,
+    suggested_name: String,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SavedDocumentResponse {
@@ -252,6 +259,37 @@ async fn save_document_as(
     }))
 }
 
+fn export_html_to_path(path: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
+    let path = normalize_destination_path(path)?;
+    let expected_fingerprint = match read_document(&path) {
+        Ok((_, fingerprint)) => Some(fingerprint),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("检查 HTML 导出目标失败：{error}")),
+    };
+    atomic_save(&path, bytes, expected_fingerprint.as_deref())
+        .map_err(|error| format!("导出 HTML 失败：{error}"))?;
+    normalize_existing_path(&path)
+}
+
+#[tauri::command]
+async fn export_html(app: AppHandle, request: ExportHtmlRequest) -> Result<Option<String>, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .add_filter("HTML", &["html", "htm"])
+        .set_file_name(&request.suggested_name)
+        .blocking_save_file();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+
+    let selected = selected
+        .into_path()
+        .map_err(|_| "当前只支持导出到本地文件".to_owned())?;
+    let path = export_html_to_path(&selected, &request.bytes)?;
+    Ok(Some(display_path(&path)))
+}
+
 fn recovery_path(app: &AppHandle) -> Result<PathBuf, String> {
     app_data_file(app, RECOVERY_DIRECTORY, RECOVERY_FILE)
 }
@@ -306,10 +344,40 @@ pub fn run() {
             list_recent_documents,
             save_document,
             save_document_as,
+            export_html,
             load_recovery_snapshot,
             save_recovery_snapshot,
             clear_recovery_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running MDEditor");
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::export_html_to_path;
+    use std::{fs, time::SystemTime};
+
+    #[test]
+    fn exports_complete_html_bytes_and_replaces_an_existing_target() {
+        let unique = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("mdeditor-export-{}-{unique}", std::process::id()));
+        fs::create_dir_all(&directory).expect("create export test directory");
+        let target = directory.join("示例 export.html");
+        fs::write(&target, b"old").expect("seed export target");
+        let html = "<!doctype html><title>示例</title>".as_bytes();
+
+        let exported = export_html_to_path(&target, html).expect("export html");
+
+        assert_eq!(
+            exported,
+            fs::canonicalize(&target).expect("canonical target")
+        );
+        assert_eq!(fs::read(&target).expect("read exported html"), html);
+        fs::remove_dir_all(directory).expect("remove export test directory");
+    }
 }

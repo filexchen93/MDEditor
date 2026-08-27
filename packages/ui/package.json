@@ -21,6 +21,7 @@
   "dependencies": {
     "@mdeditor/document-session": "workspace:*",
     "@mdeditor/editor-core": "workspace:*",
+    "@mdeditor/markdown": "workspace:*",
     "@mdeditor/renderers": "workspace:*"
   },
   "peerDependencies": {

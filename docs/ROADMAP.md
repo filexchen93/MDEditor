@@ -29,7 +29,7 @@ quality gates pass.
 
 GFM table and task interactions, outline, KaTeX, Mermaid, tabs/workspaces, export, themes and configurable shortcuts. Complex renderers must fail independently of source editing and save.
 
-Status: **in progress**. The editor now uses its declared GFM parser in both
+Status: **complete**. The editor uses its declared GFM parser in both
 source and hybrid modes. Task markers become accessible, undoable checkboxes in
 hybrid mode; tables can be inserted from the toolbar and navigated across every
 cell with Tab / Shift+Tab, with a new row created after the final cell. These
@@ -45,11 +45,17 @@ keeps a separate CodeMirror instance, selection, undo history and document
 session for every open file; dirty closes require confirmation, duplicate paths
 activate their existing tab, and a versioned recovery workspace atomically
 captures every dirty tab while migrating legacy single-document snapshots.
-Export remains open. Paper, dark and system themes now share a complete
-semantic color-token layer across the shell, source editor and hybrid widgets.
-Six persisted application shortcuts are configurable from validated choices;
-conflicts are rejected, and editor preferences reconfigure without replacing
-the document, selection or undo history.
+Standalone HTML export derives GFM output from the current editor state, applies
+an explicit element and attribute allowlist plus URL protocol checks, and embeds
+a restrictive CSP with print-ready styling. Desktop exports use a native save
+dialog and atomic replacement; the same sanitized document drives the system
+print dialog for PDF output. Export never changes source, revisions or save
+state. Paper, dark and system themes share a complete semantic color-token
+layer across the shell, source editor, hybrid widgets and export. Six persisted
+application shortcuts are configurable from validated choices; conflicts are
+rejected, and editor preferences reconfigure without replacing the document,
+selection or undo history. Unit, browser, production-build and native atomic
+write gates pass.
 
 ## M4 — Ecosystem and release maturity
 
