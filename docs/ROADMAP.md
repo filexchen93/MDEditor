@@ -57,25 +57,82 @@ rejected, and editor preferences reconfigure without replacing the document,
 selection or undo history. Unit, browser, production-build and native atomic
 write gates pass.
 
-## M4 — Ecosystem and release maturity
+## M4 — Personal open-source usability and manual distribution
 
-Permissioned plugin API, optional sync boundary, accessibility completion, signed packages, updates and a stable release process. Plugin work starts only after document and editing APIs are stable.
+The current goal is a dependable editor for personal use and open-source sharing,
+not a signed, automatically updating commercial release. Windows x64 is the first
+manual package target. macOS and Linux remain source and CI compatibility targets;
+installers are produced only when there is a concrete need and a machine available
+for smoke testing.
 
-Status: **in progress**. A versioned plugin contract now validates strict local
-module manifests and separates declared `document:read` / `document:edit`
-permissions from explicit user grants. The generated host surface exposes only
-granted immutable capabilities; source edits require an expected revision and
-pass ordered-range, overlap, count and size checks before reaching a document
-adapter. No third-party module is loaded yet: execution isolation, package
-authenticity, consent UI and host integration remain release gates.
-The active document now has a correctly associated tabpanel, closing a tab
-restores focus deterministically, and the Markdown toolbar uses one tab stop with
-wrapping Arrow/Home/End navigation. Persistent polite status announcements,
+Status: **in progress**. The versioned plugin contract and the first workspace
+accessibility improvements are complete. The remaining work is ordered by direct
+value to personal use rather than ecosystem breadth.
+
+### Priority 1 — Core usability and accessibility
+
+- Add automated WCAG checks for the main editor workflow and fix actionable
+  violations.
+- Verify keyboard-only use, high-contrast/forced-color display, zoom and narrow
+  window behavior on Windows.
+- Keep file safety, crash recovery, byte preservation and existing regression
+  gates ahead of new feature count.
+- Document known limitations instead of blocking personal builds on exhaustive
+  certification across every assistive technology and operating system.
+
+The active document already has an associated tabpanel, deterministic focus after
+tab close, a roving Markdown toolbar, persistent polite status announcements,
 application busy state, visible focus treatment and Escape-dismissable settings
-and export disclosures strengthen the current workspace keyboard and
-screen-reader path. Dedicated browser coverage exercises these semantics and
-focus transitions.
+and export disclosures. Browser coverage exercises these semantics and focus
+transitions.
 
-## Non-goals for the first stable release
+### Priority 2 — Unsigned manual packages
 
-Real-time collaboration, a cloud sync service, AI writing, mobile clients, a full plugin marketplace, commercial-editor feature parity and support for every non-standard Markdown dialect.
+- Replace placeholder versions before a shared build and enable the required
+  Tauri Windows bundle target.
+- Produce an unsigned Windows installer locally only after frontend, browser and
+  native quality gates pass.
+- Smoke-test install, launch, open, edit, save, recovery and uninstall on a clean
+  or disposable Windows environment.
+- Generate a SHA-256 checksum and short release notes for every uploaded artifact.
+- Upload installers and checksums manually to the Git hosting release/download
+  area. Do not keep generated installers in ordinary source history.
+- Clearly disclose that unsigned builds can trigger Windows SmartScreen or
+  unknown-publisher warnings.
+
+The checklist is maintained in
+[Manual unsigned distribution](MANUAL_DISTRIBUTION.md).
+
+### Priority 3 — Optional capabilities driven by personal need
+
+The permissioned plugin contract continues to validate manifests, grants and
+document edits, but third-party execution, installation UI and package
+authenticity are deferred until a real plugin is needed. The optional sync
+boundary is also deferred until a concrete provider or multi-device workflow is
+required. Neither blocks manual installer distribution.
+
+### Deferred for the current phase
+
+- Code signing, certificate/key management and Apple notarization.
+- Built-in automatic updates, update channels and rollback infrastructure.
+- Automated release workflows, formal release trains, provenance and publication
+  approvals.
+- A plugin marketplace, general-purpose cloud sync service and production support
+  commitments.
+
+These items return to the roadmap only if distribution grows beyond trusted
+personal/open-source users or operating-system warnings become an adoption
+problem.
+
+### M4 exit gate for the current phase
+
+M4 is complete when the documented quality gates pass, the unsigned Windows
+installer can be built reproducibly from a versioned commit, its checksum is
+published, and a clean-machine smoke test confirms the core local-first workflow.
+Signing, automatic updates and automated publication are explicitly not required.
+
+## Non-goals for the current personal-open-source phase
+
+Real-time collaboration, a hosted cloud sync service, AI writing, mobile clients,
+a full plugin marketplace, commercial-editor feature parity, signed distribution,
+automatic updates and support for every non-standard Markdown dialect.
