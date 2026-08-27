@@ -126,6 +126,8 @@ importers:
         specifier: 16.4.2
         version: 16.4.2
 
+  packages/plugin-api: {}
+
   packages/renderers:
     dependencies:
       '@mdeditor/editor-core':

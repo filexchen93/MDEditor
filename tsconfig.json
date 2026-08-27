@@ -8,7 +8,8 @@
         "./packages/document-session/src/index.ts"
       ],
       "@mdeditor/editor-core": ["./packages/editor-core/src/index.ts"],
-      "@mdeditor/markdown": ["./packages/markdown/src/index.ts"]
+      "@mdeditor/markdown": ["./packages/markdown/src/index.ts"],
+      "@mdeditor/plugin-api": ["./packages/plugin-api/src/index.ts"]
     },
     "types": ["node"]
   },

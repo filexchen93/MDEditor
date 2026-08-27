@@ -14,6 +14,9 @@ export default defineConfig({
       "@mdeditor/markdown": fileURLToPath(
         new URL("./packages/markdown/src/index.ts", import.meta.url),
       ),
+      "@mdeditor/plugin-api": fileURLToPath(
+        new URL("./packages/plugin-api/src/index.ts", import.meta.url),
+      ),
     },
   },
   test: {

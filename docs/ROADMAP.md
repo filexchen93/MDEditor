@@ -61,6 +61,14 @@ write gates pass.
 
 Permissioned plugin API, optional sync boundary, accessibility completion, signed packages, updates and a stable release process. Plugin work starts only after document and editing APIs are stable.
 
+Status: **in progress**. A versioned plugin contract now validates strict local
+module manifests and separates declared `document:read` / `document:edit`
+permissions from explicit user grants. The generated host surface exposes only
+granted immutable capabilities; source edits require an expected revision and
+pass ordered-range, overlap, count and size checks before reaching a document
+adapter. No third-party module is loaded yet: execution isolation, package
+authenticity, consent UI and host integration remain release gates.
+
 ## Non-goals for the first stable release
 
 Real-time collaboration, a cloud sync service, AI writing, mobile clients, a full plugin marketplace, commercial-editor feature parity and support for every non-standard Markdown dialect.

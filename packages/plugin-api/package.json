@@ -1,0 +1,20 @@
+{
+  "name": "@mdeditor/plugin-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --root ../.. --config vitest.config.ts packages/plugin-api/src/index.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
