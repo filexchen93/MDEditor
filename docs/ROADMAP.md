@@ -68,6 +68,13 @@ granted immutable capabilities; source edits require an expected revision and
 pass ordered-range, overlap, count and size checks before reaching a document
 adapter. No third-party module is loaded yet: execution isolation, package
 authenticity, consent UI and host integration remain release gates.
+The active document now has a correctly associated tabpanel, closing a tab
+restores focus deterministically, and the Markdown toolbar uses one tab stop with
+wrapping Arrow/Home/End navigation. Persistent polite status announcements,
+application busy state, visible focus treatment and Escape-dismissable settings
+and export disclosures strengthen the current workspace keyboard and
+screen-reader path. Dedicated browser coverage exercises these semantics and
+focus transitions.
 
 ## Non-goals for the first stable release
 

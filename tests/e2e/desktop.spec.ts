@@ -54,6 +54,50 @@ test("editor settings persist without losing the draft", async ({ page }) => {
   await expect(page.getByRole("checkbox", { name: "自动换行" })).toBeChecked();
 });
 
+test("ARIA landmarks and disclosures support keyboard-only navigation", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const activeTab = page.getByRole("tab", { selected: true });
+  const tabId = await activeTab.getAttribute("id");
+  if (tabId === null) throw new Error("Active document tab has no id");
+  await expect(page.getByRole("tabpanel")).toHaveAttribute(
+    "aria-labelledby",
+    tabId,
+  );
+
+  const status = page.getByRole("status");
+  await expect(status).toHaveAttribute("aria-live", "polite");
+  await expect(status).toHaveAttribute("aria-atomic", "true");
+  await expect(page.locator("main.app-shell")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+
+  const toolbar = page.getByRole("toolbar", { name: "Markdown 插入工具" });
+  const outline = toolbar.getByRole("button", { name: "大纲" });
+  const task = toolbar.getByRole("button", { name: "插入任务" });
+  const table = toolbar.getByRole("button", { name: "插入表格" });
+  await outline.focus();
+  await outline.press("ArrowRight");
+  await expect(task).toBeFocused();
+  await expect(task).toHaveAttribute("tabindex", "0");
+  await task.press("End");
+  await expect(table).toBeFocused();
+  await table.press("ArrowRight");
+  await expect(outline).toBeFocused();
+
+  const settings = page.locator("details.settings-menu").first();
+  const settingsSummary = settings.locator("summary");
+  await settingsSummary.click();
+  const theme = page.getByLabel("主题", { exact: true });
+  await theme.focus();
+  await theme.press("Escape");
+  await expect(settings).not.toHaveAttribute("open", "");
+  await expect(settingsSummary).toBeFocused();
+});
+
 test("hybrid rendering is derived and preserves caret and undo history", async ({
   page,
 }) => {
@@ -376,6 +420,7 @@ test("workspace tabs preserve source, selection, history, and dirty close guards
   await page.getByRole("button", { name: "关闭 未命名 2" }).click();
   await expect(page.getByRole("tab")).toHaveCount(1);
   await expect(firstTab).toHaveAttribute("aria-selected", "true");
+  await expect(firstTab).toBeFocused();
   await expect.poll(() => readEditorSource(activeEditor())).toBe("first tab");
 });
 

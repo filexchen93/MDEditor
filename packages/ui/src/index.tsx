@@ -161,6 +161,7 @@ export function AppShell({ documentAdapter }: AppShellProps) {
   const editorHost = useRef<HTMLDivElement>(null);
   const editor = useRef<SourceEditor | null>(null);
   const editors = useRef(new Map<string, WorkspaceEditor>());
+  const pendingTabFocusId = useRef<string | null>(null);
   const pendingTexts = useRef(
     new Map<string, string>([[initialDocument.session.id, initialText]]),
   );
@@ -185,10 +186,16 @@ export function AppShell({ documentAdapter }: AppShellProps) {
   const [outlineLoading, setOutlineLoading] = useState(false);
   const [outlineItems, setOutlineItems] = useState<readonly OutlineItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [toolbarFocusIndex, setToolbarFocusIndex] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const activeTab = getActiveWorkspaceTab(workspace);
   const activeDocumentId = activeTab.id;
+  const activeTabIndex = workspace.tabs.findIndex(
+    ({ id }) => id === activeDocumentId,
+  );
   const session = activeTab.session;
+  const toolbarTabStopIndex =
+    !recoveryReady || session.readOnly ? 0 : toolbarFocusIndex;
   const dirtyTabSignature = workspace.tabs
     .filter(({ session: tabSession }) => isDirty(tabSession))
     .map(({ id, session: tabSession }) => `${id}:${tabSession.currentRevision}`)
@@ -197,6 +204,17 @@ export function AppShell({ documentAdapter }: AppShellProps) {
   useEffect(() => {
     workspaceRef.current = workspace;
   }, [workspace]);
+
+  useEffect(() => {
+    const pendingId = pendingTabFocusId.current;
+    if (pendingId === null) return;
+    const index = workspace.tabs.findIndex(({ id }) => id === pendingId);
+    if (index < 0) return;
+    pendingTabFocusId.current = null;
+    window.requestAnimationFrame(() => {
+      document.getElementById(`workspace-tab-${index}`)?.focus();
+    });
+  }, [workspace.tabs]);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -556,8 +574,23 @@ export function AppShell({ documentAdapter }: AppShellProps) {
     if (currentWorkspace.tabs.length === 1) {
       const replacement = createUntitledSession(globalThis.crypto.randomUUID());
       pendingTexts.current.set(replacement.id, "");
+      pendingTabFocusId.current = replacement.id;
       dispatchWorkspace({ type: "replace", session: replacement });
     } else {
+      const remainingTabs = currentWorkspace.tabs.filter(
+        (candidate) => candidate.id !== id,
+      );
+      pendingTabFocusId.current =
+        currentWorkspace.activeId === id
+          ? (remainingTabs[
+              Math.min(
+                currentWorkspace.tabs.findIndex(
+                  (candidate) => candidate.id === id,
+                ),
+                remainingTabs.length - 1,
+              )
+            ]?.id ?? null)
+          : currentWorkspace.activeId;
       dispatchWorkspace({ type: "close", id });
     }
     setNotice(null);
@@ -589,6 +622,45 @@ export function AppShell({ documentAdapter }: AppShellProps) {
     if (nextIndex === null) return;
     event.preventDefault();
     activateTabAt(nextIndex);
+  }
+
+  function handleToolbarKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        "button:not(:disabled)",
+      ),
+    );
+    if (buttons.length === 0) return;
+    const currentIndex = buttons.findIndex((button) => button === event.target);
+    if (currentIndex < 0) return;
+
+    let nextIndex: number;
+    if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = buttons.length - 1;
+    else if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+    } else {
+      nextIndex = (currentIndex + 1) % buttons.length;
+    }
+    event.preventDefault();
+    const button = buttons[nextIndex];
+    if (button === undefined) return;
+    const toolbarIndex = Number(button.dataset.toolbarIndex);
+    if (Number.isInteger(toolbarIndex)) setToolbarFocusIndex(toolbarIndex);
+    button.focus();
+  }
+
+  function handleDisclosureKeyDown(
+    event: ReactKeyboardEvent<HTMLDetailsElement>,
+  ) {
+    if (event.key !== "Escape" || !event.currentTarget.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.open = false;
+    event.currentTarget.querySelector("summary")?.focus();
   }
 
   async function saveDocument(saveAs = false) {
@@ -713,11 +785,15 @@ export function AppShell({ documentAdapter }: AppShellProps) {
   const documentName = getDocumentName(session.path);
 
   return (
-    <main className="app-shell" data-theme={settings.theme}>
+    <main
+      className="app-shell"
+      data-theme={settings.theme}
+      aria-busy={busy || !recoveryReady}
+    >
       <header className="titlebar">
         <div className="titlebar-leading">
           <span className="brand">MDEditor</span>
-          <div className="mode-switch" aria-label="编辑器模式">
+          <div className="mode-switch" role="group" aria-label="编辑器模式">
             <button
               type="button"
               aria-pressed={editorMode === "source"}
@@ -776,7 +852,10 @@ export function AppShell({ documentAdapter }: AppShellProps) {
               </option>
             ))}
           </select>
-          <details className="settings-menu">
+          <details
+            className="settings-menu"
+            onKeyDown={handleDisclosureKeyDown}
+          >
             <summary>设置</summary>
             <div className="settings-panel">
               <label>
@@ -848,7 +927,10 @@ export function AppShell({ documentAdapter }: AppShellProps) {
               </fieldset>
             </div>
           </details>
-          <details className="settings-menu export-menu">
+          <details
+            className="settings-menu export-menu"
+            onKeyDown={handleDisclosureKeyDown}
+          >
             <summary>导出</summary>
             <div className="export-panel">
               <button
@@ -890,11 +972,14 @@ export function AppShell({ documentAdapter }: AppShellProps) {
           </button>
         </div>
       </header>
-      {notice ? (
-        <div className="document-notice" role="status">
-          {notice}
-        </div>
-      ) : null}
+      <div
+        className="document-notice"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {notice}
+      </div>
       <nav className="document-tabs" aria-label="打开的文档">
         <div role="tablist" aria-label="文档标签页">
           {workspace.tabs.map((tab, index) => {
@@ -945,15 +1030,24 @@ export function AppShell({ documentAdapter }: AppShellProps) {
           })}
         </div>
       </nav>
-      <section id="editor-workspace" className="workspace" aria-label="编辑区">
+      <section
+        id="editor-workspace"
+        className="workspace"
+        role="tabpanel"
+        aria-labelledby={`workspace-tab-${activeTabIndex}`}
+      >
         <div
           className="editor-toolbar"
           role="toolbar"
           aria-label="Markdown 插入工具"
+          onKeyDown={handleToolbarKeyDown}
         >
           <button
             type="button"
             aria-pressed={outlineOpen}
+            data-toolbar-index="0"
+            tabIndex={toolbarTabStopIndex === 0 ? 0 : -1}
+            onFocus={() => setToolbarFocusIndex(0)}
             onClick={() => setOutlineOpen((open) => !open)}
           >
             大纲
@@ -961,6 +1055,9 @@ export function AppShell({ documentAdapter }: AppShellProps) {
           <button
             type="button"
             disabled={!recoveryReady || session.readOnly}
+            data-toolbar-index="1"
+            tabIndex={toolbarTabStopIndex === 1 ? 0 : -1}
+            onFocus={() => setToolbarFocusIndex(1)}
             onClick={() => editor.current?.insertTask()}
           >
             插入任务
@@ -968,6 +1065,9 @@ export function AppShell({ documentAdapter }: AppShellProps) {
           <button
             type="button"
             disabled={!recoveryReady || session.readOnly}
+            data-toolbar-index="2"
+            tabIndex={toolbarTabStopIndex === 2 ? 0 : -1}
+            onFocus={() => setToolbarFocusIndex(2)}
             onClick={() => editor.current?.insertTable()}
           >
             插入表格

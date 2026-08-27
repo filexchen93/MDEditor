@@ -175,6 +175,15 @@ textarea {
   background: var(--surface);
 }
 
+.settings-menu summary:focus-visible,
+.titlebar-actions button:focus-visible,
+.titlebar-actions select:focus-visible,
+.mode-switch button:focus-visible,
+.editor-toolbar button:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
 .settings-panel {
   position: absolute;
   z-index: 10;
@@ -539,6 +548,17 @@ textarea {
   color: var(--notice-fg);
   background: var(--notice-bg);
   font-size: 12px;
+}
+
+.document-notice:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .editor-host {
