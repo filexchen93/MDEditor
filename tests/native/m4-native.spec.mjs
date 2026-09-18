@@ -14,13 +14,11 @@ import {
   nativeWorkspaceNextSource,
 } from "./fixtures.mjs";
 
-const primaryModifier = process.platform === "darwin" ? Key.Meta : Key.Ctrl;
+const primaryModifier = process.platform === "darwin" ? Key.Command : Key.Ctrl;
 const redoKeys =
   process.platform === "darwin"
-    ? [Key.Meta, Key.Shift, "z"]
-    : process.platform === "win32"
-      ? [Key.Ctrl, "y"]
-      : [Key.Ctrl, Key.Shift, "z"];
+    ? [Key.Command, Key.Shift, "z"]
+    : [Key.Ctrl, "y"];
 
 function exactButton(label) {
   return $(`//button[normalize-space(.)=${JSON.stringify(label)}]`);

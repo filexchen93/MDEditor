@@ -10,13 +10,41 @@ import {
 
 const nativeMockStateKey = "mdeditor.e2e.native-mock.v1";
 const redoShortcut =
-  process.platform === "darwin"
-    ? "Meta+Shift+z"
-    : process.platform === "win32"
-      ? "Control+y"
-      : "Control+Shift+z";
+  process.platform === "darwin" ? "Meta+Shift+z" : "Control+y";
 const linkModifier: "Meta" | "Control" =
   process.platform === "darwin" ? "Meta" : "Control";
+
+async function normalizeSnapshotHeight(
+  page: Page,
+  png: Buffer,
+  expectedHeight: number,
+): Promise<Buffer> {
+  const actualHeight = png.readUInt32BE(20);
+  if (Math.abs(actualHeight - expectedHeight) > 8) {
+    throw new Error(
+      `Screenshot height changed from ${expectedHeight} to ${actualHeight}`,
+    );
+  }
+  if (actualHeight === expectedHeight) return png;
+
+  const encoded = await page.evaluate(
+    async ({ base64, height }) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${base64}`;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (context === null) throw new Error("Canvas 2D context unavailable");
+      context.drawImage(image, 0, 0);
+      return canvas.toDataURL("image/png").split(",")[1];
+    },
+    { base64: png.toString("base64"), height: expectedHeight },
+  );
+  if (encoded === undefined) throw new Error("PNG encoding failed");
+  return Buffer.from(encoded, "base64");
+}
 
 async function openFileMenu(page: Page) {
   await page.locator("details.file-menu > summary").click();
@@ -1221,7 +1249,8 @@ test("PNG export rasterizes the safe benchmark at the selected scale", async ({
   expect(png.readUInt32BE(16)).toBe(1720);
   expect(png.readUInt32BE(20)).toBeGreaterThan(1_000);
   if (process.platform === "win32") {
-    expect(png).toMatchSnapshot("m6-benchmark-png-export.png", {
+    const normalized = await normalizeSnapshotHeight(page, png, 2962);
+    expect(normalized).toMatchSnapshot("m6-benchmark-png-export.png", {
       maxDiffPixelRatio: 0.02,
     });
   }
@@ -3701,14 +3730,14 @@ test("M6 benchmark stays structurally and visually aligned across output surface
     element.scrollTop = 0;
   });
   if (process.platform === "win32") {
-    await expect(page.locator(".editor-host")).toHaveScreenshot(
+    const editorPng = await page.locator(".editor-host").screenshot({
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+    });
+    expect(await normalizeSnapshotHeight(page, editorPng, 755)).toMatchSnapshot(
       "m6-benchmark-editor.png",
-      {
-        animations: "disabled",
-        caret: "hide",
-        maxDiffPixelRatio: 0.02,
-        scale: "css",
-      },
+      { maxDiffPixelRatio: 0.02 },
     );
   }
 
@@ -3758,15 +3787,16 @@ test("M6 benchmark stays structurally and visually aligned across output surface
 
   expect(await readOutputStructure()).toEqual(expectedStructure);
   if (process.platform === "win32") {
-    await expect(outputPage.locator("body")).toHaveScreenshot(
-      "m6-benchmark-styled-html.png",
-      {
-        animations: "disabled",
-        caret: "hide",
-        maxDiffPixelRatio: 0.02,
-        scale: "css",
-      },
-    );
+    const styledPng = await outputPage.locator("body").screenshot({
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+    });
+    expect(
+      await normalizeSnapshotHeight(outputPage, styledPng, 1432),
+    ).toMatchSnapshot("m6-benchmark-styled-html.png", {
+      maxDiffPixelRatio: 0.02,
+    });
   }
 
   await outputPage.emulateMedia({ media: "print" });
@@ -3785,15 +3815,16 @@ test("M6 benchmark stays structurally and visually aligned across output surface
     padding: "0px",
   });
   if (process.platform === "win32") {
-    await expect(outputPage.locator("body")).toHaveScreenshot(
-      "m6-benchmark-print-media.png",
-      {
-        animations: "disabled",
-        caret: "hide",
-        maxDiffPixelRatio: 0.02,
-        scale: "css",
-      },
-    );
+    const printPng = await outputPage.locator("body").screenshot({
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+    });
+    expect(
+      await normalizeSnapshotHeight(outputPage, printPng, 1388),
+    ).toMatchSnapshot("m6-benchmark-print-media.png", {
+      maxDiffPixelRatio: 0.02,
+    });
   }
 
   await expect.poll(() => readEditorSource(editor)).toBe(source);

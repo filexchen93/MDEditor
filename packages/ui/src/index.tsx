@@ -13,6 +13,7 @@ import {
   decodeDocument,
   encodeDocument,
   isDirty,
+  normalizeLineEndings,
   type DecodedDocument,
   type DocumentAdapter,
   type OpenedDocumentFile,
@@ -654,7 +655,7 @@ export function AppShell({
       const sourceEditor = createSourceEditor({
         parent: documentHost,
         text: pendingTexts.current.get(activeDocumentId) ?? "",
-        lineSeparator: tab.session.lineEnding,
+        lineSeparator: "\n",
         readOnly: tab.session.readOnly,
         mode: editorModeRef.current,
         fontSize: settingsRef.current.fontSize,
@@ -1099,7 +1100,10 @@ export function AppShell({
           try {
             const saved = await adapter.saveDocument({
               path: current.session.path,
-              bytes: encodeDocument(text, current.session),
+              bytes: encodeDocument(
+                normalizeLineEndings(text, current.session.lineEnding),
+                current.session,
+              ),
               expectedFingerprint: current.session.diskFingerprint,
             });
             dispatchWorkspace({
@@ -2432,7 +2436,10 @@ export function AppShell({
     setBusy(true);
     setNotice(null);
     try {
-      const bytes = encodeDocument(sourceEditor.getText(), session);
+      const bytes = encodeDocument(
+        normalizeLineEndings(sourceEditor.getText(), session.lineEnding),
+        session,
+      );
       const saved =
         !saveAs && session.path !== null && session.diskFingerprint !== null
           ? await documentAdapter.saveDocument({

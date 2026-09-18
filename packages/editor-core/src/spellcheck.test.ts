@@ -1,4 +1,5 @@
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
@@ -24,6 +25,7 @@ describe("spellcheck", () => {
       "contact@example.com src/wrng-file.ts",
     ].join("\n");
     const state = markdownState(doc);
+    expect(ensureSyntaxTree(state, state.doc.length, 1000)).not.toBeNull();
 
     expect(
       collectSpellcheckWords(state, [{ from: 0, to: state.doc.length }])
