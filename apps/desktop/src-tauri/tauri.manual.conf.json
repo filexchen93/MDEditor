@@ -1,0 +1,7 @@
+{
+  "productName": "MDEditor Manual Acceptance",
+  "identifier": "io.github.filexchen93.mdeditor.manual-test",
+  "build": {
+    "beforeBuildCommand": ""
+  }
+}

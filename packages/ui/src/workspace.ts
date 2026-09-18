@@ -2,6 +2,7 @@ import {
   recordEdit,
   recordSave,
   type DocumentSession,
+  type WorkspaceRelocation,
 } from "@mdeditor/document-session";
 
 export interface WorkspaceTab {
@@ -30,6 +31,10 @@ export type WorkspaceAction =
       readonly path: string;
       readonly diskFingerprint: string;
       readonly revision: number;
+    }
+  | {
+      readonly type: "relocate";
+      readonly relocations: readonly WorkspaceRelocation[];
     }
   | { readonly type: "close"; readonly id: string };
 
@@ -111,6 +116,21 @@ export function workspaceReducer(
           action.revision,
         ),
       }));
+    case "relocate": {
+      const paths = new Map(
+        action.relocations.map(({ fromPath, toPath }) => [fromPath, toPath]),
+      );
+      return {
+        ...state,
+        tabs: state.tabs.map((tab) => {
+          const path = tab.session.path;
+          const relocated = path === null ? undefined : paths.get(path);
+          return relocated === undefined
+            ? tab
+            : { ...tab, session: { ...tab.session, path: relocated } };
+        }),
+      };
+    }
     case "close": {
       if (state.tabs.length <= 1) return state;
       const index = state.tabs.findIndex(({ id }) => id === action.id);

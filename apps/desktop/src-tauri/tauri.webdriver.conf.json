@@ -1,0 +1,19 @@
+{
+  "identifier": "io.github.filexchen93.mdeditor.native-test",
+  "build": {
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "security": {
+      "capabilities": [
+        "main-window",
+        {
+          "identifier": "webdriver",
+          "description": "WebDriver access used only by feature-gated native acceptance builds.",
+          "windows": ["main"],
+          "permissions": ["wdio-webdriver:default"]
+        }
+      ]
+    }
+  }
+}

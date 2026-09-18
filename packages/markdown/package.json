@@ -1,6 +1,6 @@
 {
   "name": "@mdeditor/markdown",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -18,7 +18,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "css-tree": "3.2.1",
     "dompurify": "3.4.14",
     "marked": "16.4.2"
+  },
+  "devDependencies": {
+    "@types/css-tree": "3.2.0"
   }
 }

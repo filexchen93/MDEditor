@@ -101,4 +101,30 @@ describe("workspace tabs", () => {
     ]);
     expect(state.activeId).toBe("restored-two");
   });
+
+  it("relocates open paths without changing revisions or dirty state", () => {
+    let state = createWorkspaceState(
+      savedSession("note", "C:\\notes\\旧名称.md"),
+    );
+    state = workspaceReducer(state, {
+      type: "edit",
+      id: "note",
+      text: "dirty relocation",
+    });
+    const revision = state.tabs[0]!.session.currentRevision;
+
+    state = workspaceReducer(state, {
+      type: "relocate",
+      relocations: [
+        {
+          fromPath: "C:\\notes\\旧名称.md",
+          toPath: "C:\\notes\\归档\\新名称.md",
+        },
+      ],
+    });
+
+    expect(state.tabs[0]!.session.path).toBe("C:\\notes\\归档\\新名称.md");
+    expect(state.tabs[0]!.session.currentRevision).toBe(revision);
+    expect(isDirty(state.tabs[0]!.session)).toBe(true);
+  });
 });

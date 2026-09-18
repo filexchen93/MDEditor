@@ -45,7 +45,9 @@ try {
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
   });
-  await page.goto(new URL("tests/performance/editor-harness.html", url).href);
+  await page.goto(new URL("tests/performance/editor-harness.html", url).href, {
+    timeout: 90_000,
+  });
   await page.waitForFunction(
     () => typeof globalThis.runMDEditorBenchmark === "function",
   );

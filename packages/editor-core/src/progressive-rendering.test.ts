@@ -6,6 +6,7 @@ import {
   undoDepth,
 } from "@codemirror/commands";
 import { Compartment, EditorState } from "@codemirror/state";
+import { createMarkdownProfile } from "@mdeditor/markdown";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,10 +16,37 @@ import {
 import {
   collectProgressiveDecorations,
   createEditorModeExtension,
+  isProgressiveSyntaxActive,
   sanitizeImageSource,
 } from "./progressive-rendering.js";
 
 describe("progressive Markdown rendering", () => {
+  it("derives reversible previews only for supported inline and block HTML", () => {
+    const text = [
+      "按 <kbd>Ctrl</kbd> 与 <sub>2</sub>，再换行<br>。",
+      "",
+      "<details><summary>说明</summary>安全内容</details>",
+      "",
+      "<script>alert(1)</script>",
+      "",
+      '<div onclick="alert(1)">危险属性</div>',
+      "",
+      '<div class="page-break"></div>',
+    ].join("\n");
+    const state = createSourceEditorState({ text, mode: "hybrid" });
+    const previews = collectProgressiveDecorations(state).filter(
+      ({ kind }) => kind === "html-preview",
+    );
+
+    expect(previews.map(({ html }) => html?.source)).toEqual([
+      "<kbd>Ctrl</kbd>",
+      "<sub>2</sub>",
+      "<br>",
+      "<details><summary>说明</summary>安全内容</details>",
+    ]);
+    expect(state.sliceDoc()).toBe(text);
+  });
+
   it("derives every M2 decoration family without changing source text", () => {
     const text = [
       "# Heading *emphasis* **strong**",
@@ -52,6 +80,7 @@ describe("progressive Markdown rendering", () => {
         "list-line",
         "task",
         "table-line",
+        "table-preview",
         "strikethrough",
         "image",
         "code",
@@ -74,14 +103,22 @@ describe("progressive Markdown rendering", () => {
     expect(images[0]?.image).toEqual({
       alt: "safe",
       source: "https://example.com/a.png",
+      markdown: "![safe](https://example.com/a.png)",
     });
-    expect(images[1]?.image).toEqual({ alt: "unsafe", source: null });
+    expect(images[1]?.image).toEqual({
+      alt: "unsafe",
+      source: null,
+      markdown: "![unsafe](javascript:alert(1))",
+    });
     expect(sanitizeImageSource("file:///secret.png")).toBeNull();
     expect(
       sanitizeImageSource("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="),
     ).toBeNull();
     expect(sanitizeImageSource("data:image/png;base64,iVBORw0KGgo=")).toBe(
       "data:image/png;base64,iVBORw0KGgo=",
+    );
+    expect(sanitizeImageSource("HTTPS://example.com/cover.png")).toBe(
+      "HTTPS://example.com/cover.png",
     );
   });
 
@@ -102,9 +139,68 @@ describe("progressive Markdown rendering", () => {
     );
 
     expect(blocks.map(({ complex }) => complex)).toEqual([
-      { kind: "katex", source: "x^2 + y^2 = z^2" },
-      { kind: "mermaid", source: "flowchart LR\nA --> B" },
+      {
+        kind: "katex",
+        source: "x^2 + y^2 = z^2",
+        markdown: "```math\nx^2 + y^2 = z^2\n```",
+      },
+      {
+        kind: "mermaid",
+        source: "flowchart LR\nA --> B",
+        markdown: "```mermaid\nflowchart LR\nA --> B\n```",
+      },
     ]);
+    expect(state.sliceDoc()).toBe(text);
+  });
+
+  it("uses the shared profile for M4 extension previews", () => {
+    const text = [
+      "---",
+      "title: 示例",
+      "---",
+      "[toc]",
+      "> [!TIP]",
+      "> 使用共享语法。",
+      "正文 $x^2$[^说明]",
+      "[^说明]: 脚注内容",
+      "$$E = mc^2$$",
+    ].join("\n");
+    const state = createSourceEditorState({ text, mode: "hybrid" });
+    const specs = collectProgressiveDecorations(state);
+
+    expect(
+      specs
+        .filter(({ kind }) => kind === "extension-preview")
+        .map(({ extension }) => extension?.kind),
+    ).toEqual([
+      "front-matter",
+      "toc",
+      "alert",
+      "footnote-reference",
+      "footnote-definition",
+    ]);
+    expect(
+      specs
+        .filter(({ kind }) => kind.startsWith("complex-"))
+        .map(({ complex }) => complex?.source),
+    ).toEqual(expect.arrayContaining(["x^2", "E = mc^2"]));
+
+    const portable = createMarkdownProfile({
+      alerts: false,
+      inlineMath: false,
+    });
+    const portableSpecs = collectProgressiveDecorations(
+      state,
+      0,
+      state.doc.length,
+      portable,
+    );
+    expect(
+      portableSpecs.some(({ extension }) => extension?.kind === "alert"),
+    ).toBe(false);
+    expect(portableSpecs.some(({ kind }) => kind === "complex-inline")).toBe(
+      false,
+    );
     expect(state.sliceDoc()).toBe(text);
   });
 
@@ -122,6 +218,70 @@ describe("progressive Markdown rendering", () => {
 
     expect(specs.some(({ kind }) => kind === "heading-1")).toBe(false);
     expect(specs.some(({ kind }) => kind === "heading-2")).toBe(true);
+  });
+
+  it("derives a reversible horizontal-rule preview without changing source", () => {
+    const text = "before\n\n---\n\nafter";
+    const initial = createSourceEditorState({ text, mode: "hybrid" });
+    const state = initial.update({ selection: { anchor: text.length } }).state;
+    const rule = collectProgressiveDecorations(state).find(
+      ({ kind }) => kind === "horizontal-rule",
+    );
+
+    expect(rule).toMatchObject({
+      kind: "horizontal-rule",
+      from: text.indexOf("---"),
+      to: text.indexOf("---") + 3,
+      horizontalRule: { source: "---" },
+    });
+    expect(state.sliceDoc()).toBe(text);
+  });
+
+  it("derives source-safe syntax owners for active-structure live preview", () => {
+    const text =
+      "# title *强调* [链接](https://example.com)\n\n- item\n\nplain";
+    const initial = createSourceEditorState({ text, mode: "hybrid" });
+    const inactive = initial.update({
+      selection: { anchor: initial.doc.length },
+    }).state;
+    const syntax = collectProgressiveDecorations(inactive).filter(
+      (spec) => spec.kind === "syntax" && spec.syntax !== undefined,
+    );
+
+    expect(syntax.map((spec) => spec.syntax?.source)).toEqual(
+      expect.arrayContaining([
+        "#",
+        "*",
+        "[",
+        "]",
+        "(",
+        "https://example.com",
+        ")",
+        "-",
+      ]),
+    );
+    expect(
+      syntax.find((spec) => spec.syntax?.source === "-")?.syntax?.previewText,
+    ).toBe("•");
+    expect(
+      syntax.every((spec) => !isProgressiveSyntaxActive(inactive, spec)),
+    ).toBe(true);
+
+    const emphasisPosition = text.indexOf("强调") + 1;
+    const active = inactive.update({
+      selection: { anchor: emphasisPosition },
+    }).state;
+    const emphasisMarks = syntax.filter(
+      (spec) =>
+        spec.syntax?.source === "*" &&
+        spec.syntax.ownerFrom <= emphasisPosition &&
+        spec.syntax.ownerTo >= emphasisPosition,
+    );
+    expect(emphasisMarks).toHaveLength(2);
+    expect(
+      emphasisMarks.every((spec) => isProgressiveSyntaxActive(active, spec)),
+    ).toBe(true);
+    expect(active.sliceDoc()).toBe(text);
   });
 
   it("reconfigures rendering without touching selection or undo history", () => {

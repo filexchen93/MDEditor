@@ -29,8 +29,12 @@ jobs:
       - run: pnpm run check
 
   e2e:
-    name: Browser smoke test
-    runs-on: ubuntu-latest
+    name: Browser smoke test / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -41,7 +45,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Install Linux browser dependencies
+        if: runner.os == 'Linux'
+        run: pnpm exec playwright install-deps chromium
+      - run: pnpm exec playwright install chromium
       - run: pnpm test:e2e
 
   rust:
@@ -70,3 +77,58 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
       - working-directory: apps/desktop/src-tauri
         run: cargo test --all-targets --all-features
+      - name: Verify the production configuration without WebDriver
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --no-default-features
+
+  native-e2e:
+    name: Native Tauri flow / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:native-test
+      - name: Run native flow on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum sh -c 'pnpm test:native && pnpm test:native:restart'
+      - name: Run native flow on Windows and macOS
+        if: runner.os != 'Linux'
+        run: pnpm test:native && pnpm test:native:restart
+      - name: Validate the Windows manual-acceptance harness
+        if: runner.os == 'Windows'
+        run: pnpm test:native:manual:prepare
+      - name: Upload native diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-diagnostics-${{ matrix.os }}
+          path: |
+            test-results/native/**/*.log
+            test-results/native/**/failure.png
+            test-results/native/**/failure.html
+            test-results/native/**/app-data/recovery/active.json
+            test-results/native-restart/**/*.log
+            test-results/native-restart/**/app-data/recovery/active.json
+            test-results/native-manual/**/MANUAL_RESULT.md
+            test-results/native-manual/**/artifact-summary.json
+          if-no-files-found: ignore
