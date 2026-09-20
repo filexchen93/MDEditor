@@ -34,7 +34,7 @@ describe("native process-restart recovery seed", () => {
     );
     await editor.waitForDisplayed();
     await editor.click();
-    await editor.keys([
+    await browser.keys([
       process.platform === "darwin" ? Key.Command : Key.Ctrl,
       "a",
     ]);

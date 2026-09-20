@@ -1,4 +1,4 @@
-/* global afterEach, describe, document, it, MutationObserver, window */
+/* global afterEach, describe, document, it, KeyboardEvent, MutationObserver, window */
 
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
@@ -15,10 +15,6 @@ import {
 } from "./fixtures.mjs";
 
 const primaryModifier = process.platform === "darwin" ? Key.Command : Key.Ctrl;
-const redoKeys =
-  process.platform === "darwin"
-    ? [Key.Command, Key.Shift, "z"]
-    : [Key.Ctrl, "y"];
 
 function exactButton(label) {
   return $(`//button[normalize-space(.)=${JSON.stringify(label)}]`);
@@ -26,6 +22,29 @@ function exactButton(label) {
 
 async function openFileMenu() {
   await $("details.file-menu > summary").click();
+}
+
+async function dispatchEditorShortcut(editor, key, shiftKey = false) {
+  await editor.click();
+  await browser.execute(
+    (element, shortcutKey, useMetaKey, useShiftKey) => {
+      const options = {
+        key: shortcutKey,
+        code: `Key${shortcutKey.toUpperCase()}`,
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: !useMetaKey,
+        metaKey: useMetaKey,
+        shiftKey: useShiftKey,
+      };
+      element.dispatchEvent(new KeyboardEvent("keydown", options));
+      element.dispatchEvent(new KeyboardEvent("keyup", options));
+    },
+    editor,
+    key,
+    process.platform === "darwin",
+    shiftKey,
+  );
 }
 
 async function waitForSource(editor, expected) {
@@ -86,7 +105,7 @@ async function readEditorSource(editor) {
 
 async function replaceEditorSource(editor, source) {
   await editor.click();
-  await editor.keys([primaryModifier, "a"]);
+  await browser.keys([primaryModifier, "a"]);
   // Element Send Keys preserves supplementary Unicode characters such as emoji.
   await editor.addValue(source);
   await waitForSource(editor, source);
@@ -170,7 +189,7 @@ describe("M4 native Tauri acceptance", () => {
     await browser.saveScreenshot(path.join(directory, "layout-default.png"));
 
     await editor.click();
-    await editor.keys([primaryModifier, "a"]);
+    await browser.keys([primaryModifier, "a"]);
     await editor.addValue("a".repeat(500));
     const measureLayout = () =>
       browser.execute(() => {
@@ -329,7 +348,7 @@ describe("M4 native Tauri acceptance", () => {
     await waitForSource(editor, expectedSource);
 
     await editor.click();
-    await editor.keys([primaryModifier, Key.End]);
+    await browser.keys([primaryModifier, Key.End]);
     await editor.addValue("\n\n");
     await editor.addValue("*");
     await editor.addValue("重点");
@@ -337,24 +356,30 @@ describe("M4 native Tauri acceptance", () => {
     expectedSource += "\n\n*重点*";
     await waitForSource(editor, expectedSource);
 
-    await editor.keys([primaryModifier, "z"]);
+    await dispatchEditorShortcut(editor, "z");
     assert.notEqual(await readEditorSource(editor), expectedSource);
-    await editor.click();
-    await editor.keys(redoKeys);
+    await dispatchEditorShortcut(
+      editor,
+      process.platform === "darwin" ? "z" : "y",
+      process.platform === "darwin",
+    );
     await waitForSource(editor, expectedSource);
 
     await editor.click();
-    await editor.keys([primaryModifier, "a"]);
-    await editor.keys([Key.ArrowRight]);
+    await browser.keys([primaryModifier, "a"]);
+    await browser.keys([Key.ArrowRight]);
     await $("details.format-menu > summary").click();
     await $('[aria-label="插入目录"]').click();
     const withToc = `${expectedSource}\n\n[toc]`;
     await waitForSource(editor, withToc);
     await editor.click();
-    await editor.keys([primaryModifier, "z"]);
+    await dispatchEditorShortcut(editor, "z");
     await waitForSource(editor, expectedSource);
-    await editor.click();
-    await editor.keys(redoKeys);
+    await dispatchEditorShortcut(
+      editor,
+      process.platform === "darwin" ? "z" : "y",
+      process.platform === "darwin",
+    );
     await waitForSource(editor, withToc);
     expectedSource = withToc;
 
@@ -427,7 +452,7 @@ describe("M4 native Tauri acceptance", () => {
       index === 62 ? "NATIVE-TYPEWRITER-TARGET 中文段落" : `原生段落 ${index}`,
     ).join("\n\n");
     await editor.click();
-    await editor.keys([primaryModifier, "a"]);
+    await browser.keys([primaryModifier, "a"]);
     await editor.addValue(source);
     // CodeMirror virtualizes long documents, so validate the whole canonical
     // text through the app's real Rust recovery store rather than visible DOM.
@@ -445,7 +470,7 @@ describe("M4 native Tauri acceptance", () => {
     await exactButton("下一个").then((button) => button.click());
     await browser.keys([Key.Escape]);
     await editor.click();
-    await editor.keys([Key.ArrowRight]);
+    await browser.keys([Key.ArrowRight]);
 
     await browser.waitUntil(
       async () =>
