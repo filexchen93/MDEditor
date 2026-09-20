@@ -402,7 +402,7 @@ describe("M4 native Tauri acceptance", () => {
     assert.equal(await typewriter.getAttribute("aria-pressed"), "true");
     await $(".cm-focus-dimmed").waitForDisplayed();
 
-    if (process.platform !== "linux") {
+    if (process.platform === "win32") {
       await browser.execute(() => {
         window.__mdeditorPrintCalled = false;
         const observer = new MutationObserver(() => {
@@ -422,10 +422,10 @@ describe("M4 native Tauri acceptance", () => {
     await $("summary=导出").click();
     const printButton = await exactButton("打印 / PDF");
     assert.equal(await printButton.isDisplayed(), true);
-    if (process.platform === "linux") {
-      // WebKitGTK opens a blocking native print dialog under Xvfb. The browser
-      // suite validates the print output; the native Linux flow verifies that
-      // the real WebView exposes the command without opening that OS dialog.
+    if (process.platform !== "win32") {
+      // WebKit opens a native print dialog that cannot be automated reliably
+      // on macOS or under Linux Xvfb. The browser suite validates the output;
+      // these native flows verify that the real WebView exposes the command.
       await $("summary=导出").click();
     } else {
       await printButton.click();
@@ -597,6 +597,11 @@ describe("M4 native Tauri acceptance", () => {
       .click();
     await workspace.$('[aria-label="快速打开"] input').setValue("下一步");
     await workspace.$('[role="option"][title="中文 指南/下一步.md"]').click();
+    await browser.waitUntil(async () =>
+      (await $('[role="tab"][aria-selected="true"]').getText()).includes(
+        "下一步.md",
+      ),
+    );
     await exactButton("源码").then((button) => button.click());
     const editor = await $(
       '.editor-document-host:not([hidden]) [role="textbox"][aria-label="Markdown 源码编辑器"]',
