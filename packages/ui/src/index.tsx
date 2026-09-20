@@ -652,10 +652,13 @@ export function AppShell({
       const documentHost = document.createElement("div");
       documentHost.className = "editor-document-host";
       parent.append(documentHost);
+      const pendingText = pendingTexts.current.get(activeDocumentId) ?? "";
       const sourceEditor = createSourceEditor({
         parent: documentHost,
-        text: pendingTexts.current.get(activeDocumentId) ?? "",
-        lineSeparator: "\n",
+        text: tab.session.readOnly
+          ? pendingText
+          : normalizeLineEndings(pendingText, "\n"),
+        lineSeparator: tab.session.readOnly ? tab.session.lineEnding : "\n",
         readOnly: tab.session.readOnly,
         mode: editorModeRef.current,
         fontSize: settingsRef.current.fontSize,

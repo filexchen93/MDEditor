@@ -29,14 +29,16 @@ async function openFileMenu() {
 }
 
 async function waitForSource(editor, expected) {
-  await browser.waitUntil(
-    async () => (await readEditorSource(editor)) === expected,
-    {
-      timeout: 10_000,
-      interval: 100,
-      timeoutMsg: `Editor source did not become ${JSON.stringify(expected)}`,
-    },
-  );
+  try {
+    await browser.waitUntil(
+      async () => (await readEditorSource(editor)) === expected,
+      { timeout: 10_000, interval: 100 },
+    );
+  } catch {
+    throw new Error(
+      `Editor source did not become ${JSON.stringify(expected)}; received ${JSON.stringify(await readEditorSource(editor))}`,
+    );
+  }
 }
 
 async function readEditorSource(editor) {
@@ -84,7 +86,7 @@ async function readEditorSource(editor) {
 
 async function replaceEditorSource(editor, source) {
   await editor.click();
-  await browser.keys([primaryModifier, "a"]);
+  await editor.keys([primaryModifier, "a"]);
   // Element Send Keys preserves supplementary Unicode characters such as emoji.
   await editor.addValue(source);
   await waitForSource(editor, source);
@@ -168,7 +170,7 @@ describe("M4 native Tauri acceptance", () => {
     await browser.saveScreenshot(path.join(directory, "layout-default.png"));
 
     await editor.click();
-    await browser.keys([primaryModifier, "a"]);
+    await editor.keys([primaryModifier, "a"]);
     await editor.addValue("a".repeat(500));
     const measureLayout = () =>
       browser.execute(() => {
@@ -327,7 +329,7 @@ describe("M4 native Tauri acceptance", () => {
     await waitForSource(editor, expectedSource);
 
     await editor.click();
-    await browser.keys([primaryModifier, Key.End]);
+    await editor.keys([primaryModifier, Key.End]);
     await editor.addValue("\n\n");
     await editor.addValue("*");
     await editor.addValue("重点");
@@ -335,22 +337,24 @@ describe("M4 native Tauri acceptance", () => {
     expectedSource += "\n\n*重点*";
     await waitForSource(editor, expectedSource);
 
-    await browser.keys([primaryModifier, "z"]);
+    await editor.keys([primaryModifier, "z"]);
     assert.notEqual(await readEditorSource(editor), expectedSource);
-    await browser.keys(redoKeys);
+    await editor.click();
+    await editor.keys(redoKeys);
     await waitForSource(editor, expectedSource);
 
     await editor.click();
-    await browser.keys([primaryModifier, "a"]);
-    await browser.keys([Key.ArrowRight]);
+    await editor.keys([primaryModifier, "a"]);
+    await editor.keys([Key.ArrowRight]);
     await $("details.format-menu > summary").click();
     await $('[aria-label="插入目录"]').click();
     const withToc = `${expectedSource}\n\n[toc]`;
     await waitForSource(editor, withToc);
     await editor.click();
-    await browser.keys([primaryModifier, "z"]);
+    await editor.keys([primaryModifier, "z"]);
     await waitForSource(editor, expectedSource);
-    await browser.keys(redoKeys);
+    await editor.click();
+    await editor.keys(redoKeys);
     await waitForSource(editor, withToc);
     expectedSource = withToc;
 
@@ -423,7 +427,7 @@ describe("M4 native Tauri acceptance", () => {
       index === 62 ? "NATIVE-TYPEWRITER-TARGET 中文段落" : `原生段落 ${index}`,
     ).join("\n\n");
     await editor.click();
-    await browser.keys([primaryModifier, "a"]);
+    await editor.keys([primaryModifier, "a"]);
     await editor.addValue(source);
     // CodeMirror virtualizes long documents, so validate the whole canonical
     // text through the app's real Rust recovery store rather than visible DOM.
@@ -441,7 +445,7 @@ describe("M4 native Tauri acceptance", () => {
     await exactButton("下一个").then((button) => button.click());
     await browser.keys([Key.Escape]);
     await editor.click();
-    await browser.keys([Key.ArrowRight]);
+    await editor.keys([Key.ArrowRight]);
 
     await browser.waitUntil(
       async () =>
@@ -467,6 +471,8 @@ describe("M4 native Tauri acceptance", () => {
       },
     );
     await waitForRecoverySource(source);
+    await typewriter.click();
+    await $("details.format-menu > summary").click();
   });
 
   it("preserves BOM and CRLF on disk and refuses an external-change overwrite", async () => {
