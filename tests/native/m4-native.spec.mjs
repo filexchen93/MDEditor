@@ -29,7 +29,7 @@ async function dispatchEditorShortcut(editor, key, shiftKey = false) {
   await browser.execute(
     (element, shortcutKey, useMetaKey, useShiftKey) => {
       const options = {
-        key: shortcutKey,
+        key: useShiftKey ? shortcutKey.toUpperCase() : shortcutKey,
         code: `Key${shortcutKey.toUpperCase()}`,
         bubbles: true,
         cancelable: true,
@@ -37,8 +37,14 @@ async function dispatchEditorShortcut(editor, key, shiftKey = false) {
         metaKey: useMetaKey,
         shiftKey: useShiftKey,
       };
-      element.dispatchEvent(new KeyboardEvent("keydown", options));
-      element.dispatchEvent(new KeyboardEvent("keyup", options));
+      for (const type of ["keydown", "keyup"]) {
+        const event = new KeyboardEvent(type, options);
+        Object.defineProperties(event, {
+          keyCode: { value: shortcutKey.toUpperCase().charCodeAt(0) },
+          which: { value: shortcutKey.toUpperCase().charCodeAt(0) },
+        });
+        element.dispatchEvent(event);
+      }
     },
     editor,
     key,
@@ -396,26 +402,37 @@ describe("M4 native Tauri acceptance", () => {
     assert.equal(await typewriter.getAttribute("aria-pressed"), "true");
     await $(".cm-focus-dimmed").waitForDisplayed();
 
-    await browser.execute(() => {
-      window.__mdeditorPrintCalled = false;
-      const observer = new MutationObserver(() => {
-        document
-          .querySelectorAll("iframe.document-print-frame")
-          .forEach((frame) => {
-            if (frame.contentWindow !== null) {
-              frame.contentWindow.print = () => {
-                window.__mdeditorPrintCalled = true;
-              };
-            }
-          });
+    if (process.platform !== "linux") {
+      await browser.execute(() => {
+        window.__mdeditorPrintCalled = false;
+        const observer = new MutationObserver(() => {
+          document
+            .querySelectorAll("iframe.document-print-frame")
+            .forEach((frame) => {
+              if (frame.contentWindow !== null) {
+                frame.contentWindow.print = () => {
+                  window.__mdeditorPrintCalled = true;
+                };
+              }
+            });
+        });
+        observer.observe(document.body, { childList: true });
       });
-      observer.observe(document.body, { childList: true });
-    });
+    }
     await $("summary=导出").click();
-    await exactButton("打印 / PDF").then((button) => button.click());
-    await browser.waitUntil(() =>
-      browser.execute(() => window.__mdeditorPrintCalled === true),
-    );
+    const printButton = await exactButton("打印 / PDF");
+    assert.equal(await printButton.isDisplayed(), true);
+    if (process.platform === "linux") {
+      // WebKitGTK opens a blocking native print dialog under Xvfb. The browser
+      // suite validates the print output; the native Linux flow verifies that
+      // the real WebView exposes the command without opening that OS dialog.
+      await $("summary=导出").click();
+    } else {
+      await printButton.click();
+      await browser.waitUntil(() =>
+        browser.execute(() => window.__mdeditorPrintCalled === true),
+      );
+    }
 
     // Polling the app's real invoke bridge proves the Rust command persisted a
     // snapshot before the WebView is refreshed.
