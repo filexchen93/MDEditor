@@ -31,6 +31,10 @@ interface OpenDocumentResponse {
   readonly diskFingerprint: string;
 }
 
+type ExternalDocumentResponse =
+  | { readonly kind: "opened"; readonly document: OpenDocumentResponse }
+  | { readonly kind: "error"; readonly path: string; readonly message: string };
+
 interface OpenWorkspaceLinkResponse {
   readonly document: OpenDocumentResponse;
   readonly relativePath: string;
@@ -77,6 +81,12 @@ function toOpenedDocument(response: OpenDocumentResponse): OpenedDocument {
   return { ...response, bytes: Uint8Array.from(response.bytes) };
 }
 
+function toExternalDocumentEvent(response: ExternalDocumentResponse) {
+  return response.kind === "opened"
+    ? { kind: "opened" as const, document: toOpenedDocument(response.document) }
+    : response;
+}
+
 export function createDesktopDocumentAdapter(): DocumentAdapter {
   return {
     async openDocument(): Promise<OpenedDocumentFile> {
@@ -86,6 +96,21 @@ export function createDesktopDocumentAdapter(): DocumentAdapter {
       if (response === null) return null;
 
       return toOpenedDocument(response);
+    },
+
+    async openStartupDocuments() {
+      const responses = await invoke<ExternalDocumentResponse[]>(
+        "open_startup_documents",
+      );
+      return responses.map(toExternalDocumentEvent);
+    },
+
+    async subscribeExternalDocuments(listener) {
+      return listen("external-document-opened", (event) => {
+        listener(
+          toExternalDocumentEvent(event.payload as ExternalDocumentResponse),
+        );
+      });
     },
 
     async openWorkspace(): Promise<OpenedWorkspace> {

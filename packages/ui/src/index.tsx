@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type SyntheticEvent,
 } from "react";
 
 import {
@@ -16,6 +17,7 @@ import {
   normalizeLineEndings,
   type DecodedDocument,
   type DocumentAdapter,
+  type ExternalDocumentEvent,
   type OpenedDocumentFile,
   type OpenedWorkspace,
   type WorkspaceEntry,
@@ -258,6 +260,7 @@ const initialDocument: DecodedDocument = {
 export interface AppShellProps {
   readonly documentAdapter?: DocumentAdapter;
   readonly confirmAction?: (message: string) => boolean | Promise<boolean>;
+  readonly appVersion?: string;
 }
 
 function confirmInBrowser(message: string): boolean {
@@ -365,8 +368,13 @@ function printHtml(html: string): void {
 export function AppShell({
   documentAdapter,
   confirmAction = confirmInBrowser,
+  appVersion = "开发版",
 }: AppShellProps) {
   const editorHost = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const splitExportRef = useRef<() => Promise<string>>(() =>
+    Promise.resolve(""),
+  );
   const documentThemeInput = useRef<HTMLInputElement>(null);
   const trustedDocumentCssInput = useRef<HTMLInputElement>(null);
   const editor = useRef<SourceEditor | null>(null);
@@ -390,6 +398,10 @@ export function AppShell({
     new Map<string, string>([[initialDocument.session.id, initialText]]),
   );
   const recoveryCheckStarted = useRef(false);
+  const startupOpenStarted = useRef(false);
+  const acceptExternalDocumentRef = useRef<
+    (event: ExternalDocumentEvent) => void
+  >(() => {});
   const recoveryWritable = useRef(documentAdapter === undefined);
   const recoveryOperations = useRef<Promise<void>>(Promise.resolve());
   const lastRecoverySignature = useRef<string | null>(null);
@@ -418,11 +430,27 @@ export function AppShell({
   }>({ phase: "idle", matches: [], truncated: false });
   const folderWorkspaceRoot = folderWorkspace?.root ?? null;
   const [settings, setSettings] = useState(loadAppSettings);
+  const [settingsSection, setSettingsSection] = useState<
+    "appearance" | "writing" | "shortcuts" | "about"
+  >("appearance");
   const [documentStyleLibrary, setDocumentStyleLibrary] = useState(
     loadDocumentStyleLibrary,
   );
   const [trustedCssAcknowledged, setTrustedCssAcknowledged] = useState(false);
   const [editorMode, setEditorMode] = useState<EditorMode>("hybrid");
+  const [viewLayout, setViewLayout] = useState<"single" | "split">("single");
+  const [splitPreviewHtml, setSplitPreviewHtml] = useState("");
+  const [splitPreviewError, setSplitPreviewError] = useState<string | null>(
+    null,
+  );
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [replacement, setReplacement] = useState("");
+  const [searchOptions, setSearchOptions] = useState({
+    caseSensitive: false,
+    wholeWord: false,
+    regularExpression: false,
+  });
   const settingsRef = useRef(settings);
   const editorModeRef = useRef(editorMode);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -684,6 +712,7 @@ export function AppShell({
         onImageFiles: (files) => {
           void importWorkspaceImageFilesRef.current(activeDocumentId, files);
         },
+        onSearchRequest: () => setSearchOpen(true),
       });
       workspaceEditor = { editor: sourceEditor, host: documentHost };
       editors.current.set(activeDocumentId, workspaceEditor);
@@ -725,6 +754,21 @@ export function AppShell({
   useEffect(() => {
     editor.current?.setMode(editorMode);
   }, [activeDocumentId, editorMode, recoveryReady]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    window.requestAnimationFrame(() => searchInput.current?.focus());
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    editor.current?.runSearch(
+      searchQuery,
+      replacement,
+      searchOptions,
+      "update",
+    );
+  }, [activeDocumentId, replacement, searchOpen, searchOptions, searchQuery]);
 
   useEffect(() => {
     editor.current?.setPreferences({
@@ -1169,6 +1213,48 @@ export function AppShell({
     }
     return decoded;
   }
+
+  acceptExternalDocumentRef.current = (event) => {
+    if (event.kind === "error") {
+      setNotice(`无法打开“${getDocumentName(event.path)}”：${event.message}`);
+      return;
+    }
+    acceptOpenedDocument(event.document);
+    refreshRecentDocuments();
+    setNotice(`已打开：${event.document.path}`);
+  };
+
+  useEffect(() => {
+    if (!documentAdapter || !recoveryReady) return;
+    let disposed = false;
+    let unsubscribe: (() => void) | null = null;
+    void documentAdapter
+      .subscribeExternalDocuments((event) =>
+        acceptExternalDocumentRef.current(event),
+      )
+      .then((stop) => {
+        if (disposed) stop();
+        else unsubscribe = stop;
+      })
+      .catch((error: unknown) => {
+        setNotice(`无法监听拖入文件：${getErrorMessage(error)}`);
+      });
+    if (!startupOpenStarted.current) {
+      startupOpenStarted.current = true;
+      void documentAdapter
+        .openStartupDocuments()
+        .then((events) => {
+          for (const event of events) acceptExternalDocumentRef.current(event);
+        })
+        .catch((error: unknown) => {
+          setNotice(`无法打开启动参数文件：${getErrorMessage(error)}`);
+        });
+    }
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, [documentAdapter, recoveryReady]);
 
   function refreshRecentDocuments() {
     if (!documentAdapter) return;
@@ -2426,6 +2512,16 @@ export function AppShell({
     event.currentTarget.querySelector("summary")?.focus();
   }
 
+  function handleTopMenuToggle(event: SyntheticEvent<HTMLDetailsElement>) {
+    if (!event.currentTarget.open) return;
+    const current = event.currentTarget;
+    document
+      .querySelectorAll<HTMLDetailsElement>(".titlebar-actions > details[open]")
+      .forEach((menu) => {
+        if (menu !== current) menu.open = false;
+      });
+  }
+
   async function saveDocument(saveAs = false) {
     const sourceEditor = editor.current;
     if (!documentAdapter || !sourceEditor || busy || session.readOnly) return;
@@ -2530,6 +2626,43 @@ export function AppShell({
     };
   }
 
+  splitExportRef.current = async () =>
+    (await createCurrentExport("styled")).html;
+
+  useEffect(() => {
+    if (viewLayout !== "split" || !recoveryReady) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void splitExportRef
+        .current()
+        .then((html) => {
+          if (!cancelled) {
+            setSplitPreviewHtml(html);
+            setSplitPreviewError(null);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setSplitPreviewHtml("");
+            setSplitPreviewError(getErrorMessage(error));
+          }
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeDocumentId,
+    activeDocumentTheme?.css,
+    activeTrustedDocumentCss?.css,
+    dirtyTabSignature,
+    recoveryReady,
+    settings.printLayout,
+    settings.theme,
+    viewLayout,
+  ]);
+
   async function exportHtml(style: HtmlExportStyle) {
     if (busy || !recoveryReady) return;
     setBusy(true);
@@ -2629,6 +2762,7 @@ export function AppShell({
       event.preventDefault();
 
       if (action === "toggleMode") {
+        setViewLayout("single");
         setEditorMode((mode) => (mode === "source" ? "hybrid" : "source"));
         return;
       }
@@ -2660,6 +2794,28 @@ export function AppShell({
     collapsedOutlineItems,
   );
 
+  function runDocumentSearch(
+    action: "next" | "previous" | "replace" | "replaceAll",
+  ) {
+    const applied = editor.current?.runSearch(
+      searchQuery,
+      replacement,
+      searchOptions,
+      action,
+    );
+    if (!applied) {
+      setNotice(
+        searchQuery.trim() === ""
+          ? "请先输入查找内容。"
+          : searchOptions.regularExpression
+            ? "没有匹配项，或正则表达式无效。"
+            : "没有匹配项。",
+      );
+    } else {
+      setNotice(null);
+    }
+  }
+
   return (
     <main
       className="app-shell"
@@ -2667,6 +2823,7 @@ export function AppShell({
       data-focus-mode={settings.focusMode}
       data-typewriter-mode={settings.typewriterMode}
       data-editor-mode={editorMode}
+      data-view-layout={viewLayout}
       aria-busy={busy || !recoveryReady}
     >
       {compiledDocumentStyles === "" ? null : (
@@ -2675,20 +2832,43 @@ export function AppShell({
       <header className="titlebar">
         <div className="titlebar-leading">
           <h1 className="brand">MDEditor</h1>
-          <div className="mode-switch" role="group" aria-label="编辑器模式">
+          <div
+            className="mode-switch"
+            role="radiogroup"
+            aria-label="编辑器布局"
+          >
             <button
               type="button"
-              aria-pressed={editorMode === "source"}
-              onClick={() => setEditorMode("source")}
+              role="radio"
+              aria-checked={viewLayout === "single" && editorMode === "source"}
+              onClick={() => {
+                setViewLayout("single");
+                setEditorMode("source");
+              }}
             >
               源码
             </button>
             <button
               type="button"
-              aria-pressed={editorMode === "hybrid"}
-              onClick={() => setEditorMode("hybrid")}
+              role="radio"
+              aria-checked={viewLayout === "single" && editorMode === "hybrid"}
+              onClick={() => {
+                setViewLayout("single");
+                setEditorMode("hybrid");
+              }}
             >
               混合
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={viewLayout === "split"}
+              onClick={() => {
+                setEditorMode("source");
+                setViewLayout("split");
+              }}
+            >
+              双栏
             </button>
           </div>
         </div>
@@ -2701,11 +2881,16 @@ export function AppShell({
             type="button"
             title="查找 / 替换（Ctrl/⌘ F）"
             disabled={!recoveryReady}
-            onClick={() => editor.current?.openSearch()}
+            aria-expanded={searchOpen}
+            onClick={() => setSearchOpen((open) => !open)}
           >
             查找 / 替换
           </button>
-          <details className="file-menu" onKeyDown={handleDisclosureKeyDown}>
+          <details
+            className="file-menu"
+            onKeyDown={handleDisclosureKeyDown}
+            onToggle={handleTopMenuToggle}
+          >
             <summary>文件</summary>
             <div
               className="settings-panel file-panel"
@@ -2794,295 +2979,394 @@ export function AppShell({
           <details
             className="settings-menu"
             onKeyDown={handleDisclosureKeyDown}
+            onToggle={handleTopMenuToggle}
           >
             <summary>设置</summary>
             <div className="settings-panel">
-              <label>
-                主题
-                <select
-                  aria-label="主题"
-                  value={settings.theme}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      theme: event.currentTarget.value as AppSettings["theme"],
-                    })
-                  }
-                >
-                  <option value="system">跟随系统</option>
-                  <option value="paper">纸张浅色</option>
-                  <option value="dark">深色</option>
-                </select>
-              </label>
-              <fieldset className="document-theme-settings">
-                <legend>文档主题与 CSS</legend>
+              <div
+                className="settings-tabs"
+                role="tablist"
+                aria-label="设置分类"
+              >
+                {(
+                  [
+                    ["appearance", "外观"],
+                    ["writing", "编辑"],
+                    ["shortcuts", "快捷键"],
+                    ["about", "关于"],
+                  ] as const
+                ).map(([section, label]) => (
+                  <button
+                    key={section}
+                    type="button"
+                    role="tab"
+                    aria-selected={settingsSection === section}
+                    aria-controls={`settings-${section}`}
+                    onClick={() => setSettingsSection(section)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <section
+                id="settings-appearance"
+                className="settings-section"
+                role="tabpanel"
+                aria-label="外观设置"
+                hidden={settingsSection !== "appearance"}
+              >
                 <label>
-                  文档主题
+                  主题
                   <select
-                    aria-label="文档主题"
-                    value={activeDocumentTheme?.id ?? ""}
+                    aria-label="主题"
+                    value={settings.theme}
                     onChange={(event) =>
                       updateSettings({
                         ...settings,
-                        documentThemeId: event.currentTarget.value || null,
+                        theme: event.currentTarget
+                          .value as AppSettings["theme"],
                       })
                     }
                   >
-                    <option value="">默认文档样式</option>
-                    {documentStyleLibrary.themes.map((theme) => (
-                      <option key={theme.id} value={theme.id}>
-                        {theme.name}
-                      </option>
-                    ))}
+                    <option value="system">跟随系统</option>
+                    <option value="paper">纸张浅色</option>
+                    <option value="dark">深色</option>
                   </select>
                 </label>
-                <div className="document-theme-actions">
-                  <input
-                    ref={documentThemeInput}
-                    className="visually-hidden-file"
-                    type="file"
-                    accept=".css,text/css"
-                    aria-label="选择文档主题 CSS"
-                    onChange={(event) =>
-                      void installThemeFile(event.currentTarget.files?.[0])
-                    }
-                  />
-                  <button
-                    type="button"
-                    onClick={() => documentThemeInput.current?.click()}
-                  >
-                    安装主题 CSS
-                  </button>
-                  <button
-                    type="button"
-                    disabled={activeDocumentTheme === null}
-                    onClick={deleteActiveDocumentTheme}
-                  >
-                    移除当前主题
-                  </button>
-                </div>
-                <small>
-                  安装主题仅允许表现属性，并自动限定在编辑文档、带样式 HTML、PNG
-                  与打印表面。
-                </small>
-                <label className="trusted-css-confirmation">
-                  <input
-                    type="checkbox"
-                    checked={trustedCssAcknowledged}
-                    onChange={(event) =>
-                      setTrustedCssAcknowledged(event.currentTarget.checked)
-                    }
-                  />
-                  我理解受信 CSS 可以改变文档布局
-                </label>
-                <div className="document-theme-actions">
-                  <input
-                    ref={trustedDocumentCssInput}
-                    className="visually-hidden-file"
-                    type="file"
-                    accept=".css,text/css"
-                    aria-label="选择受信文档 CSS"
-                    onChange={(event) =>
-                      void installTrustedCssFile(event.currentTarget.files?.[0])
-                    }
-                  />
-                  <button
-                    type="button"
-                    disabled={!trustedCssAcknowledged}
-                    onClick={() => trustedDocumentCssInput.current?.click()}
-                  >
-                    加载受信 CSS
-                  </button>
-                  <button
-                    type="button"
-                    disabled={documentStyleLibrary.trustedCss === null}
-                    onClick={removeTrustedDocumentCss}
-                  >
-                    移除受信 CSS
-                  </button>
-                </div>
-                {documentStyleLibrary.trustedCss === null ? null : (
+                <fieldset className="document-theme-settings">
+                  <legend>文档主题与 CSS</legend>
                   <label>
-                    <input
-                      type="checkbox"
-                      checked={settings.trustedDocumentCssEnabled}
+                    文档主题
+                    <select
+                      aria-label="文档主题"
+                      value={activeDocumentTheme?.id ?? ""}
                       onChange={(event) =>
                         updateSettings({
                           ...settings,
-                          trustedDocumentCssEnabled:
-                            event.currentTarget.checked,
+                          documentThemeId: event.currentTarget.value || null,
                         })
                       }
-                    />
-                    启用“{documentStyleLibrary.trustedCss.name}”
-                  </label>
-                )}
-                <small>
-                  即使明确受信，仍拒绝远程资源、@import、固定定位与越界选择器。
-                </small>
-              </fieldset>
-              <label>
-                字号
-                <input
-                  type="range"
-                  min="12"
-                  max="24"
-                  value={settings.fontSize}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      fontSize: Number(event.currentTarget.value),
-                    })
-                  }
-                />
-                <output>{settings.fontSize}px</output>
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={settings.lineWrapping}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      lineWrapping: event.currentTarget.checked,
-                    })
-                  }
-                />
-                自动换行
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={settings.focusMode}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      focusMode: event.currentTarget.checked,
-                    })
-                  }
-                />
-                专注模式
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={settings.typewriterMode}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      typewriterMode: event.currentTarget.checked,
-                    })
-                  }
-                />
-                打字机模式
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={settings.markdownAutoPair}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      markdownAutoPair: event.currentTarget.checked,
-                    })
-                  }
-                />
-                Markdown 自动配对
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={settings.spellcheckEnabled}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      spellcheckEnabled: event.currentTarget.checked,
-                    })
-                  }
-                />
-                拼写检查（离线）
-              </label>
-              <label>
-                拼写语言
-                <select
-                  aria-label="拼写检查语言"
-                  disabled={!settings.spellcheckEnabled}
-                  value={settings.spellcheckLanguage}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      spellcheckLanguage: event.currentTarget
-                        .value as AppSettings["spellcheckLanguage"],
-                    })
-                  }
-                >
-                  <option value="en-US">English（美国）</option>
-                  <option value="en-GB">English（英国）</option>
-                </select>
-              </label>
-              <small className="settings-hint">
-                词典仅在启用时加载；悬停波浪线可查看并应用替换建议。
-              </small>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={settings.autoSaveEnabled}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      autoSaveEnabled: event.currentTarget.checked,
-                    })
-                  }
-                />
-                自动保存已有文件
-              </label>
-              <label>
-                自动保存延迟
-                <select
-                  aria-label="自动保存延迟"
-                  disabled={!settings.autoSaveEnabled}
-                  value={settings.autoSaveDelaySeconds}
-                  onChange={(event) =>
-                    updateSettings({
-                      ...settings,
-                      autoSaveDelaySeconds: Number(
-                        event.currentTarget.value,
-                      ) as AutoSaveDelaySeconds,
-                    })
-                  }
-                >
-                  <option value="2">停止输入 2 秒后</option>
-                  <option value="5">停止输入 5 秒后</option>
-                  <option value="10">停止输入 10 秒后</option>
-                  <option value="30">停止输入 30 秒后</option>
-                </select>
-              </label>
-              <fieldset className="shortcut-settings">
-                <legend>快捷键</legend>
-                {SHORTCUT_ACTIONS.map((action) => (
-                  <label key={action}>
-                    {shortcutNames[action]}
-                    <select
-                      aria-label={`${shortcutNames[action]}快捷键`}
-                      value={settings.shortcuts[action]}
-                      onChange={(event) =>
-                        updateShortcut(action, event.currentTarget.value)
-                      }
                     >
-                      {SUPPORTED_SHORTCUTS.map((shortcut) => (
-                        <option key={shortcut} value={shortcut}>
-                          {formatShortcut(shortcut)}
+                      <option value="">默认文档样式</option>
+                      {documentStyleLibrary.themes.map((theme) => (
+                        <option key={theme.id} value={theme.id}>
+                          {theme.name}
                         </option>
                       ))}
                     </select>
                   </label>
-                ))}
-              </fieldset>
+                  <div className="document-theme-actions">
+                    <input
+                      ref={documentThemeInput}
+                      className="visually-hidden-file"
+                      type="file"
+                      accept=".css,text/css"
+                      aria-label="选择文档主题 CSS"
+                      onChange={(event) =>
+                        void installThemeFile(event.currentTarget.files?.[0])
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => documentThemeInput.current?.click()}
+                    >
+                      安装主题 CSS
+                    </button>
+                    <button
+                      type="button"
+                      disabled={activeDocumentTheme === null}
+                      onClick={deleteActiveDocumentTheme}
+                    >
+                      移除当前主题
+                    </button>
+                  </div>
+                  <small>
+                    安装主题仅允许表现属性，并自动限定在编辑文档、带样式
+                    HTML、PNG 与打印表面。
+                  </small>
+                  <label className="trusted-css-confirmation">
+                    <input
+                      type="checkbox"
+                      checked={trustedCssAcknowledged}
+                      onChange={(event) =>
+                        setTrustedCssAcknowledged(event.currentTarget.checked)
+                      }
+                    />
+                    我理解受信 CSS 可以改变文档布局
+                  </label>
+                  <div className="document-theme-actions">
+                    <input
+                      ref={trustedDocumentCssInput}
+                      className="visually-hidden-file"
+                      type="file"
+                      accept=".css,text/css"
+                      aria-label="选择受信文档 CSS"
+                      onChange={(event) =>
+                        void installTrustedCssFile(
+                          event.currentTarget.files?.[0],
+                        )
+                      }
+                    />
+                    <button
+                      type="button"
+                      disabled={!trustedCssAcknowledged}
+                      onClick={() => trustedDocumentCssInput.current?.click()}
+                    >
+                      加载受信 CSS
+                    </button>
+                    <button
+                      type="button"
+                      disabled={documentStyleLibrary.trustedCss === null}
+                      onClick={removeTrustedDocumentCss}
+                    >
+                      移除受信 CSS
+                    </button>
+                  </div>
+                  {documentStyleLibrary.trustedCss === null ? null : (
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={settings.trustedDocumentCssEnabled}
+                        onChange={(event) =>
+                          updateSettings({
+                            ...settings,
+                            trustedDocumentCssEnabled:
+                              event.currentTarget.checked,
+                          })
+                        }
+                      />
+                      启用“{documentStyleLibrary.trustedCss.name}”
+                    </label>
+                  )}
+                  <small>
+                    即使明确受信，仍拒绝远程资源、@import、固定定位与越界选择器。
+                  </small>
+                </fieldset>
+              </section>
+              <section
+                id="settings-writing"
+                className="settings-section"
+                role="tabpanel"
+                aria-label="编辑设置"
+                hidden={settingsSection !== "writing"}
+              >
+                <label>
+                  字号
+                  <input
+                    type="range"
+                    min="12"
+                    max="24"
+                    value={settings.fontSize}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        fontSize: Number(event.currentTarget.value),
+                      })
+                    }
+                  />
+                  <output>{settings.fontSize}px</output>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.lineWrapping}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        lineWrapping: event.currentTarget.checked,
+                      })
+                    }
+                  />
+                  自动换行
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.focusMode}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        focusMode: event.currentTarget.checked,
+                      })
+                    }
+                  />
+                  专注模式
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.typewriterMode}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        typewriterMode: event.currentTarget.checked,
+                      })
+                    }
+                  />
+                  打字机模式
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.markdownAutoPair}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        markdownAutoPair: event.currentTarget.checked,
+                      })
+                    }
+                  />
+                  Markdown 自动配对
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.spellcheckEnabled}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        spellcheckEnabled: event.currentTarget.checked,
+                      })
+                    }
+                  />
+                  拼写检查（离线）
+                </label>
+                <label>
+                  拼写语言
+                  <select
+                    aria-label="拼写检查语言"
+                    disabled={!settings.spellcheckEnabled}
+                    value={settings.spellcheckLanguage}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        spellcheckLanguage: event.currentTarget
+                          .value as AppSettings["spellcheckLanguage"],
+                      })
+                    }
+                  >
+                    <option value="en-US">English（美国）</option>
+                    <option value="en-GB">English（英国）</option>
+                  </select>
+                </label>
+                <small className="settings-hint">
+                  词典仅在启用时加载；悬停波浪线可查看并应用替换建议。
+                </small>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.autoSaveEnabled}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        autoSaveEnabled: event.currentTarget.checked,
+                      })
+                    }
+                  />
+                  自动保存已有文件
+                </label>
+                <label>
+                  自动保存延迟
+                  <select
+                    aria-label="自动保存延迟"
+                    disabled={!settings.autoSaveEnabled}
+                    value={settings.autoSaveDelaySeconds}
+                    onChange={(event) =>
+                      updateSettings({
+                        ...settings,
+                        autoSaveDelaySeconds: Number(
+                          event.currentTarget.value,
+                        ) as AutoSaveDelaySeconds,
+                      })
+                    }
+                  >
+                    <option value="2">停止输入 2 秒后</option>
+                    <option value="5">停止输入 5 秒后</option>
+                    <option value="10">停止输入 10 秒后</option>
+                    <option value="30">停止输入 30 秒后</option>
+                  </select>
+                </label>
+              </section>
+              <section
+                id="settings-shortcuts"
+                className="settings-section"
+                role="tabpanel"
+                aria-label="快捷键设置"
+                hidden={settingsSection !== "shortcuts"}
+              >
+                <fieldset className="shortcut-settings">
+                  <legend>快捷键</legend>
+                  {SHORTCUT_ACTIONS.map((action) => (
+                    <label key={action}>
+                      {shortcutNames[action]}
+                      <select
+                        aria-label={`${shortcutNames[action]}快捷键`}
+                        value={settings.shortcuts[action]}
+                        onChange={(event) =>
+                          updateShortcut(action, event.currentTarget.value)
+                        }
+                      >
+                        {SUPPORTED_SHORTCUTS.map((shortcut) => (
+                          <option key={shortcut} value={shortcut}>
+                            {formatShortcut(shortcut)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </fieldset>
+              </section>
+              <section
+                id="settings-about"
+                className="settings-section settings-about"
+                role="tabpanel"
+                aria-label="关于 MDEditor"
+                hidden={settingsSection !== "about"}
+              >
+                <strong>MDEditor {appVersion}</strong>
+                <p>以下信息可用于填写 Windows 人工验收记录。</p>
+                <textarea
+                  aria-label="版本与环境信息"
+                  readOnly
+                  rows={12}
+                  value={[
+                    `MDEditor：${appVersion}`,
+                    "构建提交：请手填（可用 git rev-parse --short HEAD 查询）",
+                    `系统：${navigator.userAgent.match(/Windows NT [^;)]+/u)?.[0] ?? navigator.platform}（精确版本请用 winver 核对）`,
+                    "Windows 精确版本：请用 winver 核对后手填",
+                    `WebView2 / Edge：${navigator.userAgent.match(/Edg\/([\d.]+)/u)?.[1] ?? "未检测到"}`,
+                    `显示分辨率：${window.screen.width} × ${window.screen.height}`,
+                    `显示缩放：${Math.round(window.devicePixelRatio * 100)}%（请与 Windows 设置核对）`,
+                    `窗口内容尺寸：${window.innerWidth} × ${window.innerHeight} CSS 像素`,
+                    "Windows 对比度主题：请手填",
+                    `语言：${navigator.language}`,
+                    "中文输入法及版本：请手填",
+                    "键盘布局 / 实体键盘：请手填",
+                  ].join("\n")}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const information =
+                      document.querySelector<HTMLTextAreaElement>(
+                        "#settings-about textarea",
+                      )?.value;
+                    if (information === undefined) return;
+                    void navigator.clipboard.writeText(information).then(
+                      () => setNotice("版本与环境信息已复制。"),
+                      () => setNotice("无法自动复制，请选中文本手动复制。"),
+                    );
+                  }}
+                >
+                  复制版本信息
+                </button>
+              </section>
             </div>
           </details>
           <details
             className="settings-menu export-menu"
             onKeyDown={handleDisclosureKeyDown}
+            onToggle={handleTopMenuToggle}
           >
             <summary>导出</summary>
             <div className="export-panel">
@@ -3293,6 +3577,110 @@ export function AppShell({
           </button>
         </div>
       </header>
+      {searchOpen ? (
+        <section className="document-search" aria-label="文档查找替换">
+          <label>
+            查找
+            <input
+              ref={searchInput}
+              type="text"
+              aria-label="查找"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  runDocumentSearch(event.shiftKey ? "previous" : "next");
+                } else if (event.key === "Escape") {
+                  setSearchOpen(false);
+                  editor.current?.focus();
+                }
+              }}
+            />
+          </label>
+          <label>
+            替换
+            <input
+              type="text"
+              aria-label="替换"
+              value={replacement}
+              onChange={(event) => setReplacement(event.currentTarget.value)}
+            />
+          </label>
+          <button type="button" onClick={() => runDocumentSearch("previous")}>
+            上一个
+          </button>
+          <button type="button" onClick={() => runDocumentSearch("next")}>
+            下一个
+          </button>
+          <button
+            type="button"
+            disabled={session.readOnly}
+            onClick={() => runDocumentSearch("replace")}
+          >
+            替换当前
+          </button>
+          <button
+            type="button"
+            disabled={session.readOnly}
+            onClick={() => runDocumentSearch("replaceAll")}
+          >
+            全部替换
+          </button>
+          <label>
+            <input
+              type="checkbox"
+              checked={searchOptions.caseSensitive}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setSearchOptions((options) => ({
+                  ...options,
+                  caseSensitive: checked,
+                }));
+              }}
+            />
+            区分大小写
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={searchOptions.wholeWord}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setSearchOptions((options) => ({
+                  ...options,
+                  wholeWord: checked,
+                }));
+              }}
+            />
+            全字匹配
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={searchOptions.regularExpression}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setSearchOptions((options) => ({
+                  ...options,
+                  regularExpression: checked,
+                }));
+              }}
+            />
+            正则表达式
+          </label>
+          <button
+            type="button"
+            aria-label="关闭查找替换"
+            onClick={() => {
+              setSearchOpen(false);
+              editor.current?.focus();
+            }}
+          >
+            关闭
+          </button>
+        </section>
+      ) : null}
       <div
         className="document-notice"
         role="status"
@@ -3606,13 +3994,33 @@ export function AppShell({
               )}
             </nav>
           ) : null}
-          <div
-            ref={editorHost}
-            className="editor-host"
-            data-md-document-style={
-              compiledDocumentStyles === "" ? undefined : "true"
-            }
-          />
+          <div className="editor-pane">
+            <div
+              ref={editorHost}
+              className="editor-host"
+              data-md-document-style={
+                compiledDocumentStyles === "" ? undefined : "true"
+              }
+            />
+          </div>
+          {viewLayout === "split" ? (
+            <section className="split-preview" aria-label="文档预览">
+              <div className="split-preview-heading">预览 · {documentName}</div>
+              {splitPreviewError === null ? (
+                splitPreviewHtml === "" ? (
+                  <p role="status">正在更新预览…</p>
+                ) : (
+                  <iframe
+                    title="Markdown 实时预览"
+                    sandbox=""
+                    srcDoc={splitPreviewHtml}
+                  />
+                )
+              ) : (
+                <p role="status">预览失败：{splitPreviewError}</p>
+              )}
+            </section>
+          ) : null}
         </div>
       </section>
       <footer className="statusbar" aria-label="文档状态">

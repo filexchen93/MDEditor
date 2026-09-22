@@ -20,6 +20,7 @@ export type {
   DecodedDocument,
   DocumentAdapter,
   DocumentEncoding,
+  ExternalDocumentEvent,
   DocumentSession,
   ExportDocxRequest,
   ExportHtmlRequest,

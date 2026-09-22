@@ -9,7 +9,16 @@ import {
   syntaxTree,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { openSearchPanel } from "@codemirror/search";
+import {
+  findNext,
+  findPrevious,
+  openSearchPanel,
+  replaceAll,
+  replaceNext,
+  SearchQuery,
+  search as searchExtension,
+  setSearchQuery,
+} from "@codemirror/search";
 import {
   Compartment,
   EditorSelection,
@@ -72,6 +81,7 @@ export interface SourceEditorOptions {
   readonly onLinkActivate?: (target: string) => void;
   readonly resolveImageSource?: ImageSourceResolver;
   readonly onImageFiles?: (files: readonly File[]) => void;
+  readonly onSearchRequest?: () => void;
 }
 
 export interface SourceEditorStateOptions {
@@ -91,7 +101,17 @@ export interface SourceEditorStateOptions {
   readonly onLinkActivate?: (target: string) => void;
   readonly resolveImageSource?: ImageSourceResolver;
   readonly onImageFiles?: (files: readonly File[]) => void;
+  readonly onSearchRequest?: () => void;
 }
+
+export interface SourceEditorSearchOptions {
+  readonly caseSensitive: boolean;
+  readonly wholeWord: boolean;
+  readonly regularExpression: boolean;
+}
+
+export type SourceEditorSearchAction =
+  "update" | "next" | "previous" | "replace" | "replaceAll";
 
 export interface SourceEditor {
   readonly getText: () => string;
@@ -103,6 +123,12 @@ export interface SourceEditor {
   readonly insertTable: () => void;
   readonly editTable: (command: TableEditCommand) => boolean;
   readonly openSearch: () => boolean;
+  readonly runSearch: (
+    query: string,
+    replacement: string,
+    options: SourceEditorSearchOptions,
+    action: SourceEditorSearchAction,
+  ) => boolean;
   readonly revealPosition: (position: number) => void;
   readonly revealHeading: (fragment: string) => boolean;
   readonly insertImageReference: (
@@ -1045,6 +1071,7 @@ function createState(
     doc: options.text,
     extensions: [
       basicSetup,
+      searchExtension(),
       markdown({
         base: markdownLanguage,
         codeLanguages,
@@ -1075,6 +1102,21 @@ function createState(
         { key: "Tab", run: moveTableCell(1) },
         { key: "Shift-Tab", run: moveTableCell(-1) },
       ]),
+      ...(options.onSearchRequest === undefined
+        ? []
+        : [
+            Prec.high(
+              keymap.of([
+                {
+                  key: "Mod-f",
+                  run: () => {
+                    options.onSearchRequest?.();
+                    return true;
+                  },
+                },
+              ]),
+            ),
+          ]),
       EditorView.contentAttributes.of({
         "aria-label": "Markdown 源码编辑器",
         ...(readOnly ? { tabindex: "0" } : {}),
@@ -1209,6 +1251,27 @@ export function createSourceEditor(options: SourceEditorOptions): SourceEditor {
     },
     editTable: (command) => runTableEdit(command)(view),
     openSearch: () => openSearchPanel(view),
+    runSearch: (query, replacement, options, action) => {
+      const searchQuery = new SearchQuery({
+        search: query,
+        replace: replacement,
+        caseSensitive: options.caseSensitive,
+        wholeWord: options.wholeWord,
+        regexp: options.regularExpression,
+      });
+      view.dispatch({ effects: setSearchQuery.of(searchQuery) });
+      if (action === "update") return searchQuery.valid;
+      if (!searchQuery.valid) return false;
+      if (
+        (action === "replace" || action === "replaceAll") &&
+        view.state.readOnly
+      )
+        return false;
+      if (action === "next") return findNext(view);
+      if (action === "previous") return findPrevious(view);
+      if (action === "replace") return replaceNext(view);
+      return replaceAll(view);
+    },
     revealPosition: (position) => {
       const anchor = Math.max(0, Math.min(position, view.state.doc.length));
       view.dispatch({

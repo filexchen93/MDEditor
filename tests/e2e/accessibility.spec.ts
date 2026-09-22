@@ -78,7 +78,7 @@ test("hybrid preview controls pass automated accessibility audit", async ({
     ].join("\n"),
   );
   await editor.press("ControlOrMeta+End");
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   await expect(page.locator("[data-md-table-preview]")).toBeVisible();
   await expect(page.locator('[data-md-html-preview="block"]')).toBeVisible();
   await expectAccessible(page);
@@ -98,7 +98,9 @@ test("outline and search panels pass automated accessibility audit", async ({
     .click();
   await page.getByRole("button", { name: "查找 / 替换" }).click();
   await expect(page.locator(".outline-panel")).toBeVisible();
-  await expect(page.locator(".cm-panel.cm-search")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "文档查找替换" }),
+  ).toBeVisible();
   await expectAccessible(page);
 });
 

@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { getIdentifier } from "@tauri-apps/api/app";
+import { getIdentifier, getVersion } from "@tauri-apps/api/app";
 import { isTauri } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 
@@ -42,10 +42,14 @@ if (!rootElement) {
   throw new Error("MDEditor root element was not found");
 }
 
-void resolveDesktopConfirmation().then((confirmAction) => {
+void Promise.all([
+  resolveDesktopConfirmation(),
+  isTauri() ? getVersion().catch(() => "未知") : Promise.resolve("开发版"),
+]).then(([confirmAction, appVersion]) => {
   createRoot(rootElement).render(
     <StrictMode>
       <AppShell
+        appVersion={appVersion}
         confirmAction={confirmAction}
         documentAdapter={isTauri() ? createDesktopDocumentAdapter() : undefined}
       />

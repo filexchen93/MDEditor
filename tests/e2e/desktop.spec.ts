@@ -72,6 +72,7 @@ interface NativeMockState {
 
 interface NativeAdapterMockOptions {
   readonly initialRecovery?: readonly number[];
+  readonly startupMarkdown?: string;
   readonly rejectConfirmation?: boolean;
   readonly confirmationResults?: readonly ("Ok" | "Cancel")[];
   readonly cancelSaveAs?: boolean;
@@ -196,6 +197,7 @@ async function installNativeAdapterMock(
           unregisterListener: (event: string, eventId: number) => void;
         };
         __MDEDITOR_E2E_EMIT_WORKSPACE__?: () => void;
+        __MDEDITOR_E2E_EMIT_EXTERNAL__?: (name: string, source: string) => void;
       };
       eventRuntime.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
         unregisterListener: (_event, eventId) => {
@@ -210,6 +212,23 @@ async function installNativeAdapterMock(
             event: listener.event,
             id,
             payload: { root: workspaceRoot },
+          });
+        }
+      };
+      eventRuntime.__MDEDITOR_E2E_EMIT_EXTERNAL__ = (name, source) => {
+        for (const [id, listener] of eventListeners) {
+          if (listener.event !== "external-document-opened") continue;
+          callbacks.get(listener.handler)?.({
+            event: listener.event,
+            id,
+            payload: {
+              kind: "opened",
+              document: {
+                path: `C:\\验收\\${name}`,
+                bytes: [...new TextEncoder().encode(source)],
+                diskFingerprint: `mock-external-${name}`,
+              },
+            },
           });
         }
       };
@@ -263,6 +282,24 @@ async function installNativeAdapterMock(
               case "list_recent_documents":
                 saveState(state);
                 return state.recent;
+              case "open_startup_documents":
+                saveState(state);
+                return options.startupMarkdown === undefined
+                  ? []
+                  : [
+                      {
+                        kind: "opened",
+                        document: {
+                          path: "C:\\验收\\启动.md",
+                          bytes: [
+                            ...new TextEncoder().encode(
+                              options.startupMarkdown,
+                            ),
+                          ],
+                          diskFingerprint: "mock-startup",
+                        },
+                      },
+                    ];
               case "plugin:event|listen": {
                 const eventId = nextEventListenerId++;
                 eventListeners.set(eventId, {
@@ -1132,7 +1169,7 @@ test("workspace image import copies an asset and inserts a portable relative ref
   await expect(page.getByRole("status")).toContainText(
     "已导入图片：assets/封面 (终稿).png",
   );
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   await expect(page.locator(".cm-md-image-widget img")).toBeVisible();
 
   const sourceBeforeExport = await readEditorSource(editor);
@@ -1868,7 +1905,7 @@ test("modifier link navigation handles headings, workspace files and safe extern
   await editor.click();
   await editor.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
 
   const link = (label: string) =>
     page.locator(".cm-md-link").filter({ hasText: label }).first();
@@ -1920,6 +1957,7 @@ test("editor settings persist without losing the draft", async ({ page }) => {
   await page.keyboard.type("settings draft ");
 
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page.getByRole("slider", { name: "字号" }).fill("20");
   await page.getByRole("checkbox", { name: "自动换行" }).check();
 
@@ -1931,6 +1969,7 @@ test("editor settings persist without losing the draft", async ({ page }) => {
 
   await page.reload();
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await expect(page.getByText("20px")).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "自动换行" })).toBeChecked();
 });
@@ -1962,6 +2001,7 @@ test("offline spellcheck skips Markdown syntax and applies suggestions", async (
   expect(dictionaryRequests).toEqual([]);
 
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page.getByRole("checkbox", { name: "拼写检查（离线）" }).check();
   await page.getByText("设置", { exact: true }).click();
 
@@ -1985,6 +2025,7 @@ test("offline spellcheck skips Markdown syntax and applies suggestions", async (
   await editor.press("ControlOrMeta+A");
   await page.keyboard.insertText("color colour");
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page
     .getByRole("combobox", { name: "拼写检查语言" })
     .selectOption("en-GB");
@@ -1999,6 +2040,7 @@ test("offline spellcheck skips Markdown syntax and applies suggestions", async (
 
   await page.reload();
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await expect(
     page.getByRole("checkbox", { name: "拼写检查（离线）" }),
   ).toBeChecked();
@@ -2013,6 +2055,7 @@ test("conservative auto-save persists named documents and clears recovery", asyn
   await installNativeAdapterMock(page);
   await page.goto("/");
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page.getByRole("checkbox", { name: "自动保存已有文件" }).check();
   await page.getByRole("combobox", { name: "自动保存延迟" }).selectOption("2");
   await page.getByText("设置", { exact: true }).click();
@@ -2051,6 +2094,7 @@ test("auto-save keeps untitled drafts in recovery without opening save-as", asyn
   await installNativeAdapterMock(page);
   await page.goto("/");
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page.getByRole("checkbox", { name: "自动保存已有文件" }).check();
   await page.getByRole("combobox", { name: "自动保存延迟" }).selectOption("2");
   await page.getByText("设置", { exact: true }).click();
@@ -2075,6 +2119,7 @@ test("auto-save pauses after a fingerprint failure until manual resolution", asy
   await installNativeAdapterMock(page, { saveDocumentFailures: 1 });
   await page.goto("/");
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page.getByRole("checkbox", { name: "自动保存已有文件" }).check();
   await page.getByRole("combobox", { name: "自动保存延迟" }).selectOption("2");
   await page.getByText("设置", { exact: true }).click();
@@ -2287,7 +2332,7 @@ test("the toolbar inserts an undoable TOC from canonical Markdown", async ({
   await expect.poll(() => readEditorSource(editor)).toBe(`[toc]\n\n${source}`);
 
   await editor.press("ControlOrMeta+End");
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   await expect(page.locator('[data-md-extension-preview="toc"]')).toContainText(
     "Alpha",
   );
@@ -2295,7 +2340,7 @@ test("the toolbar inserts an undoable TOC from canonical Markdown", async ({
     "Beta",
   );
 
-  await page.getByRole("button", { name: "源码", exact: true }).click();
+  await page.getByRole("radio", { name: "源码", exact: true }).click();
   await editor.press("ControlOrMeta+Z");
   await expect.poll(() => readEditorSource(editor)).toBe(source);
 });
@@ -2331,18 +2376,18 @@ test("extended commands share undoable source and preview workflows", async ({
   await clickMoreFormat(page, "插入 KaTeX 数学块");
   const mathSource = "```katex\nx^2 + y^2\n```";
   await expect.poll(() => readEditorSource(editor)).toBe(mathSource);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   await expect(
     page.locator('[data-md-complex-widget="katex"]'),
   ).toHaveAttribute("data-md-render-state", "ready");
-  await page.getByRole("button", { name: "源码", exact: true }).click();
+  await page.getByRole("radio", { name: "源码", exact: true }).click();
 
   await editor.press("ControlOrMeta+A");
   await page.keyboard.insertText("正文");
   await clickMoreFormat(page, "插入水平线");
   await expect.poll(() => readEditorSource(editor)).toBe("正文\n\n---");
   await editor.press("ControlOrMeta+Home");
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   const rulePreview = page.getByRole("button", { name: "编辑水平线源码" });
   await expect(rulePreview).toBeVisible();
   await rulePreview.press("Enter");
@@ -2384,9 +2429,9 @@ test("hybrid rendering is derived and preserves caret and undo history", async (
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
 
-  const hybridButton = page.getByRole("button", { name: "混合" });
+  const hybridButton = page.getByRole("radio", { name: "混合" });
   await hybridButton.click();
-  await expect(hybridButton).toHaveAttribute("aria-pressed", "true");
+  await expect(hybridButton).toHaveAttribute("aria-checked", "true");
   await expect(page.locator(".cm-md-heading-1")).toContainText("标题");
   await expect(page.locator(".cm-md-emphasis")).toContainText("强调");
   await expect(page.locator(".cm-md-strong")).toContainText("加粗");
@@ -2415,7 +2460,7 @@ test("hybrid rendering is derived and preserves caret and undo history", async (
   await editor.press("ControlOrMeta+z");
   await expect.poll(() => readEditorSource(editor)).toBe(source);
 
-  await page.getByRole("button", { name: "源码", exact: true }).click();
+  await page.getByRole("radio", { name: "源码", exact: true }).click();
   await expect(page.locator(".cm-md-heading-1")).toHaveCount(0);
   await expect(page.locator('[data-md-image-widget="true"]')).toHaveCount(0);
   await expect.poll(() => readEditorSource(editor)).toBe(source);
@@ -2431,7 +2476,7 @@ test("Chinese IME composition is committed once and remains undoable", async ({
   await editor.click();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(sourcePrefix);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   await editor.focus();
   await editor.press("End");
   const imageWidget = await page
@@ -2477,7 +2522,7 @@ test("GFM task checkboxes change only their source marker", async ({
   await editor.click();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
 
   const tasks = page.locator('[data-md-task-checkbox="true"]');
   await expect(tasks).toHaveCount(2);
@@ -2486,7 +2531,7 @@ test("GFM task checkboxes change only their source marker", async ({
   await tasks.nth(0).click();
   await expect(tasks.nth(0)).toBeChecked();
 
-  await page.getByRole("button", { name: "源码", exact: true }).click();
+  await page.getByRole("radio", { name: "源码", exact: true }).click();
   await expect
     .poll(() => readEditorSource(editor))
     .toBe("- [x] first\n- [X] second");
@@ -2546,7 +2591,7 @@ test("table preview replaces inactive source and reopens it for editing", async 
   await editor.click();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
 
   const preview = page.getByRole("button", { name: "编辑表格源码" });
   await expect(preview).toBeVisible();
@@ -2590,7 +2635,7 @@ test("safe HTML previews expand to exact source while active markup stays visibl
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
   await editor.press("ControlOrMeta+End");
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
 
   const previews = page.locator("[data-md-html-preview]");
   await expect(previews).toHaveCount(2);
@@ -2638,7 +2683,7 @@ test("table structure controls edit rows, columns and alignment atomically", asy
   await editor.click();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   await page.getByRole("button", { name: "编辑表格源码" }).press("Enter");
   await page.locator("details.format-menu > summary").click();
   await page.locator("summary", { hasText: "表格结构操作" }).click();
@@ -2764,6 +2809,92 @@ test("search panel supports whole-word, case-sensitive and regexp replacement", 
   await expect.poll(() => readEditorSource(editor)).toBe("R R Rbar R1\nR R");
 });
 
+test("settings tabs and About remain usable at narrow widths", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/");
+  await page.getByText("设置", { exact: true }).click();
+  const appearance = page.getByRole("tab", { name: "外观" });
+  const writing = page.getByRole("tab", { name: "编辑" });
+  const about = page.getByRole("tab", { name: "关于" });
+  await expect(appearance).toHaveAttribute("aria-selected", "true");
+  await writing.click();
+  await expect(writing).toHaveAttribute("aria-selected", "true");
+  await expect(appearance).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByRole("slider", { name: "字号" })).toBeVisible();
+  await about.click();
+  const versions = page.getByRole("textbox", { name: "版本与环境信息" });
+  await expect(versions).toHaveValue(/MDEditor：/u);
+  await expect(versions).toHaveValue(/WebView2 \/ Edge：/u);
+  await expect(versions).toHaveValue(/中文输入法及版本：请手填/u);
+  const bounds = await page
+    .locator("details.settings-menu > .settings-panel")
+    .boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+});
+
+test("split layout updates a right-side preview and keeps one mode selected", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 820 });
+  await page.goto("/");
+  const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
+  await editor.click();
+  await editor.press("ControlOrMeta+A");
+  await page.keyboard.insertText("# 初稿\n\n第一段");
+  const split = page.getByRole("radio", { name: "双栏" });
+  await split.click();
+  await expect(split).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "源码" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  const preview = page.frameLocator('iframe[title="Markdown 实时预览"]');
+  await expect(preview.getByRole("heading", { name: "初稿" })).toBeVisible();
+  await expect(preview.getByText("第一段")).toBeVisible();
+  const sourceBounds = await page.locator(".editor-pane").boundingBox();
+  const previewBounds = await page.locator(".split-preview").boundingBox();
+  expect(sourceBounds).not.toBeNull();
+  expect(previewBounds).not.toBeNull();
+  expect(sourceBounds!.x + sourceBounds!.width).toBeLessThanOrEqual(
+    previewBounds!.x + 1,
+  );
+  await editor.click();
+  await editor.press("ControlOrMeta+End");
+  await page.keyboard.insertText(" 更新");
+  await expect(preview.getByText("第一段 更新")).toBeVisible();
+  await page.getByRole("radio", { name: "混合" }).click();
+  await expect(page.locator(".split-preview")).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "混合" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});
+
+test("startup arguments and native file drops open Markdown tabs", async ({
+  page,
+}) => {
+  await installNativeAdapterMock(page, { startupMarkdown: "# 启动文件" });
+  await page.goto("/");
+  const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
+  await expect.poll(() => readEditorSource(editor)).toBe("# 启动文件");
+  await expect(page.getByRole("tab", { name: /启动/u })).toBeVisible();
+  await expect
+    .poll(async () => (await readNativeMockState(page)).commands)
+    .toContain("plugin:event|listen");
+  await page.evaluate(() => {
+    const runtime = window as typeof window & {
+      __MDEDITOR_E2E_EMIT_EXTERNAL__?: (name: string, source: string) => void;
+    };
+    runtime.__MDEDITOR_E2E_EMIT_EXTERNAL__?.("拖入.md", "# 拖入文件");
+  });
+  await expect.poll(() => readEditorSource(editor)).toBe("# 拖入文件");
+  await expect(page.getByRole("tab", { name: /拖入/u })).toBeVisible();
+});
+
 test("status bar updates document and selection statistics", async ({
   page,
 }) => {
@@ -2859,6 +2990,7 @@ test("focus, typewriter, and Markdown pairing preserve canonical source", async 
   await expect.poll(() => readEditorSource(editor)).toBe("");
 
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page.getByRole("checkbox", { name: "Markdown 自动配对" }).uncheck();
   await page.getByText("设置", { exact: true }).click();
   await editor.click();
@@ -2867,6 +2999,7 @@ test("focus, typewriter, and Markdown pairing preserve canonical source", async 
 
   await page.reload();
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "编辑" }).click();
   await expect(
     page.getByRole("checkbox", { name: "Markdown 自动配对" }),
   ).not.toBeChecked();
@@ -2894,6 +3027,7 @@ test("theme and editor preferences persist without replacing history", async ({
   await page
     .getByRole("combobox", { name: "主题", exact: true })
     .selectOption("dark");
+  await page.getByRole("tab", { name: "编辑" }).click();
   await page.getByRole("slider", { name: "字号" }).fill("21");
   await page.getByRole("checkbox", { name: "自动换行" }).check();
 
@@ -2917,9 +3051,11 @@ test("theme and editor preferences persist without replacing history", async ({
 
   await page.reload();
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "外观" }).click();
   await expect(
     page.getByRole("combobox", { name: "主题", exact: true }),
   ).toHaveValue("dark");
+  await page.getByRole("tab", { name: "编辑" }).click();
   await expect(page.getByRole("slider", { name: "字号" })).toHaveValue("21");
   await expect(page.getByRole("checkbox", { name: "自动换行" })).toBeChecked();
 });
@@ -3034,6 +3170,7 @@ test("custom shortcuts execute actions and reject conflicts", async ({
   await page.goto("/");
 
   await page.getByText("设置", { exact: true }).click();
+  await page.getByRole("tab", { name: "快捷键" }).click();
   const modeShortcut = page.getByRole("combobox", {
     name: "切换模式快捷键",
   });
@@ -3047,21 +3184,21 @@ test("custom shortcuts execute actions and reject conflicts", async ({
   );
   await expect(outlineShortcut).toHaveValue("Mod-Shift-o");
 
-  const hybridButton = page.getByRole("button", { name: "混合" });
+  const hybridButton = page.getByRole("radio", { name: "混合" });
   await page.keyboard.press("ControlOrMeta+Shift+M");
-  await expect(hybridButton).toHaveAttribute("aria-pressed", "true");
+  await expect(hybridButton).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("ControlOrMeta+Alt+M");
-  await expect(hybridButton).toHaveAttribute("aria-pressed", "false");
+  await expect(hybridButton).toHaveAttribute("aria-checked", "false");
   await page.keyboard.press("ControlOrMeta+Shift+O");
   await expect(
     page.getByRole("navigation", { name: "文档大纲" }),
   ).toBeVisible();
 
   await page.reload();
-  const reloadedHybridButton = page.getByRole("button", { name: "混合" });
+  const reloadedHybridButton = page.getByRole("radio", { name: "混合" });
   await expect(reloadedHybridButton).toBeVisible();
   await page.keyboard.press("ControlOrMeta+Alt+M");
-  await expect(reloadedHybridButton).toHaveAttribute("aria-pressed", "false");
+  await expect(reloadedHybridButton).toHaveAttribute("aria-checked", "false");
 });
 
 test("workspace tabs preserve source, selection, history, and dirty close guards", async ({
@@ -3159,7 +3296,7 @@ test("KaTeX and Mermaid previews fail independently and preserve source", async 
   await editor.click();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
   await page.waitForTimeout(250);
   expect(pageErrors).toEqual([]);
 
@@ -3221,7 +3358,7 @@ test("KaTeX and Mermaid previews fail independently and preserve source", async 
   await editor.press("ControlOrMeta+z");
   await expect.poll(() => readEditorSource(editor)).toBe(source);
 
-  await page.getByRole("button", { name: "源码", exact: true }).click();
+  await page.getByRole("radio", { name: "源码", exact: true }).click();
   await expect(widgets).toHaveCount(0);
   await expect.poll(() => readEditorSource(editor)).toBe(source);
 });
@@ -3248,7 +3385,7 @@ test("profile extensions share reversible live previews", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
   await editor.press("ControlOrMeta+End");
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
 
   await expect(
     page.locator('[data-md-extension-preview="front-matter"]'),
@@ -3315,9 +3452,9 @@ test("M4 writing flow stays canonical through recovery, save, and export", async
   await editor.click();
   await editor.press("ControlOrMeta+A");
   await page.keyboard.insertText(seededSource);
-  const hybridButton = page.getByRole("button", { name: "混合" });
+  const hybridButton = page.getByRole("radio", { name: "混合" });
   await hybridButton.click();
-  await expect(hybridButton).toHaveAttribute("aria-pressed", "true");
+  await expect(hybridButton).toHaveAttribute("aria-checked", "true");
   await expect(page.locator(".cm-md-heading-1")).toContainText("M4 验收");
   await expect(
     page.locator('[data-md-complex-widget="katex"]'),
@@ -3387,7 +3524,7 @@ test("M4 writing flow stays canonical through recovery, save, and export", async
   await page.getByRole("button", { name: "专注", exact: true }).click();
   await page.getByRole("button", { name: "打字机", exact: true }).click();
   await expect(page.locator(".cm-focus-dimmed").first()).toBeVisible();
-  await expect(hybridButton).toHaveAttribute("aria-pressed", "true");
+  await expect(hybridButton).toHaveAttribute("aria-checked", "true");
 
   await expect
     .poll(
@@ -3407,7 +3544,7 @@ test("M4 writing flow stays canonical through recovery, save, and export", async
   await expect(page.getByText(/已恢复.*未保存内容/u)).toBeVisible();
   editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
   await expect.poll(() => readEditorSource(editor)).toBe(expectedSource);
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
 
   await clickFileAction(page, "另存为");
   await expect(page.getByRole("status")).toContainText("已安全保存");
@@ -3441,8 +3578,8 @@ test("M4 writing flow stays canonical through recovery, save, and export", async
   expect(html).not.toContain('class="language-mermaid"');
   expect(html).toContain("中文，A🙂");
   expect(html).not.toContain("<script");
-  await expect(page.getByRole("button", { name: "混合" })).toHaveAttribute(
-    "aria-pressed",
+  await expect(page.getByRole("radio", { name: "混合" })).toHaveAttribute(
+    "aria-checked",
     "true",
   );
   await expect.poll(() => readEditorSource(editor)).toBe(expectedSource);
@@ -3698,7 +3835,7 @@ test("M6 benchmark stays structurally and visually aligned across output surface
   await editor.press("ControlOrMeta+A");
   await page.keyboard.insertText(source);
   await editor.press("ControlOrMeta+End");
-  await page.getByRole("button", { name: "混合" }).click();
+  await page.getByRole("radio", { name: "混合" }).click();
 
   await expect(
     page.locator('[data-md-extension-preview="front-matter"]'),

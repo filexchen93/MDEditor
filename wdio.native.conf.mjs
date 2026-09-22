@@ -1,6 +1,7 @@
 import path from "node:path";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import {
+  nativeFixturePath,
   nativeWorkspaceRoot,
   seedNativeFiles,
 } from "./tests/native/fixtures.mjs";
@@ -52,6 +53,10 @@ export const config = {
         captureBackendLogs: true,
         captureFrontendLogs: false,
         startTimeout: 60_000,
+        appArgs:
+          process.env.MDEDITOR_NATIVE_STARTUP_TEST === "1"
+            ? [nativeFixturePath(runDirectory)]
+            : [],
         env: {
           MDEDITOR_NATIVE_TEST_DATA: path.join(runDirectory, "app-data"),
           MDEDITOR_NATIVE_WORKSPACE_ROOT: nativeWorkspaceRoot(runDirectory),

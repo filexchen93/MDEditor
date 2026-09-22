@@ -37,6 +37,10 @@ export interface OpenedDocumentFile {
   readonly diskFingerprint: string;
 }
 
+export type ExternalDocumentEvent =
+  | { readonly kind: "opened"; readonly document: OpenedDocumentFile }
+  | { readonly kind: "error"; readonly path: string; readonly message: string };
+
 export type WorkspaceEntryKind = "directory" | "file";
 
 export interface WorkspaceEntry {
@@ -225,6 +229,12 @@ export interface RecoverySnapshot {
  */
 export interface DocumentAdapter {
   readonly openDocument: () => Promise<OpenedDocumentFile | null>;
+  readonly openStartupDocuments: () => Promise<
+    readonly ExternalDocumentEvent[]
+  >;
+  readonly subscribeExternalDocuments: (
+    listener: (event: ExternalDocumentEvent) => void,
+  ) => Promise<() => void>;
   readonly openWorkspace: () => Promise<OpenedWorkspace | null>;
   readonly refreshWorkspace: (root: string) => Promise<OpenedWorkspace>;
   readonly closeWorkspace: (root: string) => Promise<void>;

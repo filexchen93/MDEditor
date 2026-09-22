@@ -56,6 +56,8 @@ const MAXIMUM_DOCX_BYTES: usize = 256 * 1024 * 1024;
 #[derive(Default)]
 struct AuthorizedPaths(Mutex<HashSet<PathBuf>>);
 
+struct StartupPaths(Mutex<Vec<PathBuf>>);
+
 #[derive(Default)]
 struct AuthorizedRoots(Mutex<HashSet<PathBuf>>);
 
@@ -65,12 +67,19 @@ struct ActiveWorkspaceWatcher(Mutex<Option<RecommendedWatcher>>);
 #[derive(Default)]
 struct ActiveWorkspaceSearches(Mutex<HashMap<String, (PathBuf, Arc<AtomicBool>)>>);
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenDocumentResponse {
     path: String,
     bytes: Vec<u8>,
     disk_fingerprint: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum ExternalDocumentEvent {
+    Opened { document: OpenDocumentResponse },
+    Error { path: String, message: String },
 }
 
 #[derive(Deserialize)]
@@ -457,6 +466,49 @@ async fn open_document(
         bytes,
         disk_fingerprint,
     }))
+}
+
+fn open_external_document(app: &AppHandle, selected: &Path) -> ExternalDocumentEvent {
+    let result = (|| {
+        let path = normalize_existing_path(selected)?;
+        validate_workspace_document(&path)?;
+        let (bytes, disk_fingerprint) =
+            read_document(&path).map_err(|error| format!("读取文件失败：{error}"))?;
+        validate_workspace_document(&path)?;
+        authorize(&app.state::<AuthorizedPaths>(), path.clone())?;
+        let _ = remember_recent_document(app, &path);
+        Ok::<_, String>(OpenDocumentResponse {
+            path: display_path(&path),
+            bytes,
+            disk_fingerprint,
+        })
+    })();
+    match result {
+        Ok(document) => ExternalDocumentEvent::Opened { document },
+        Err(message) => ExternalDocumentEvent::Error {
+            path: display_path(selected),
+            message,
+        },
+    }
+}
+
+#[tauri::command]
+async fn open_startup_documents(
+    app: AppHandle,
+    startup_paths: State<'_, StartupPaths>,
+) -> Result<Vec<ExternalDocumentEvent>, String> {
+    let paths = std::mem::take(
+        &mut *startup_paths
+            .0
+            .lock()
+            .map_err(|_| "启动文件列表不可用".to_owned())?,
+    );
+    let mut seen = HashSet::new();
+    Ok(paths
+        .into_iter()
+        .filter(|path| seen.insert(path.clone()))
+        .map(|path| open_external_document(&app, &path))
+        .collect())
 }
 
 fn pick_workspace_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
@@ -1510,6 +1562,11 @@ async fn clear_recovery_snapshot(app: AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let startup_paths = std::env::args_os()
+        .skip(1)
+        .filter(|argument| !argument.to_string_lossy().starts_with('-'))
+        .map(PathBuf::from)
+        .collect();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
@@ -1518,11 +1575,25 @@ pub fn run() {
 
     builder
         .manage(AuthorizedPaths::default())
+        .manage(StartupPaths(Mutex::new(startup_paths)))
         .manage(AuthorizedRoots::default())
         .manage(ActiveWorkspaceWatcher::default())
         .manage(ActiveWorkspaceSearches::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                let app = window.app_handle().clone();
+                let paths = paths.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    for path in paths {
+                        let opened = open_external_document(&app, &path);
+                        let _ = app.emit("external-document-opened", opened);
+                    }
+                });
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             open_document,
+            open_startup_documents,
             open_workspace,
             refresh_workspace,
             close_workspace,
