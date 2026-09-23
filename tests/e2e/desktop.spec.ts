@@ -3009,6 +3009,63 @@ test("split layout updates a right-side preview and keeps one mode selected", as
   );
 });
 
+test("remote Markdown images load in the editor and split preview under the desktop CSP", async ({
+  page,
+}) => {
+  const config = JSON.parse(
+    await readFile(
+      new URL("../../apps/desktop/src-tauri/tauri.conf.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { app: { security: { csp: string } } };
+  const appUrl = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? "5173"}/`;
+  await page.route(appUrl, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        // Vite injects an inline development script; the packaged app does not.
+        "content-security-policy": `${config.app.security.csp}; script-src 'self' 'unsafe-inline'`,
+      },
+    });
+  });
+  await page.route("https://images.example.test/remote.png", (route) =>
+    route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    }),
+  );
+  await page.goto("/");
+  const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
+  await editor.click();
+  await page.keyboard.insertText(
+    "![网络图片](https://images.example.test/remote.png)",
+  );
+  await page.getByRole("radio", { name: "混合" }).click();
+  const inlineImage = page.locator(".cm-md-image-widget img");
+  await expect(inlineImage).toBeVisible();
+  await expect
+    .poll(() =>
+      inlineImage.evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBe(1);
+
+  await page.getByRole("radio", { name: "双栏" }).click();
+  const previewImage = page
+    .frameLocator('iframe[title="Markdown 实时预览"]')
+    .locator("img");
+  await expect(previewImage).toBeVisible();
+  await expect
+    .poll(() =>
+      previewImage.evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBe(1);
+});
+
 test("startup arguments and native file drops open Markdown tabs", async ({
   page,
 }) => {
