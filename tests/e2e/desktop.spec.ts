@@ -971,6 +971,13 @@ async function readEditorSource(editor: Locator) {
 }
 
 async function clickMoreFormat(page: Page, name: string) {
+  const directAction = page
+    .locator(".editor-toolbar > button")
+    .and(page.getByRole("button", { name, exact: true }));
+  if (await directAction.isVisible()) {
+    await directAction.click();
+    return;
+  }
   await page.locator("details.format-menu > summary").click();
   await page
     .locator("details.format-menu .format-panel")
@@ -2195,10 +2202,12 @@ test("ARIA landmarks and disclosures support keyboard-only navigation", async ({
   await more.focus();
   await more.press("Enter");
   await expect(
-    toolbar.locator(".format-panel").getByRole("button", { name: "无序列表" }),
+    toolbar.locator(".format-panel").getByRole("button", { name: "插入目录" }),
   ).toBeVisible();
   await expect(
-    toolbar.locator(".format-panel").getByRole("button", { name: "插入表格" }),
+    toolbar
+      .locator(".format-panel")
+      .getByRole("button", { name: "插入打印分页标记" }),
   ).toBeVisible();
   await more.press("Escape");
   await expect(more).toBeFocused();
@@ -2225,10 +2234,43 @@ test("format toolbar grows with available width and menus close on outside click
   const actions = toolbar.locator("button[data-toolbar-index]");
   const compactCount = await actions.count();
   await expect(toolbar.locator("details.format-menu > summary")).toBeVisible();
+  const more = toolbar.locator("details.format-menu");
+  const expectNoDuplicateActions = async () => {
+    const direct = await toolbar
+      .locator(":scope > button[aria-label]")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getAttribute("aria-label")),
+      );
+    const overflow = await more
+      .locator(".format-panel > button[aria-label]")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getAttribute("aria-label")),
+      );
+    expect(direct.filter((label) => overflow.includes(label))).toEqual([]);
+  };
+  await more.locator(":scope > summary").click();
+  await expectNoDuplicateActions();
+  await expect(
+    more.locator(".format-panel").getByRole("button", { name: "插入表格" }),
+  ).toBeVisible();
+  await expect(
+    toolbar.locator(":scope > button[aria-label='插入表格']"),
+  ).toHaveCount(0);
+  await more.locator(":scope > summary").click();
+
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect.poll(() => actions.count()).toBeGreaterThan(compactCount);
   await expect(toolbar.getByRole("button", { name: "一级标题" })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "无序列表" })).toBeVisible();
+  await expect(
+    toolbar.locator(":scope > button[aria-label='插入表格']"),
+  ).toBeVisible();
+  await more.locator(":scope > summary").click();
+  await expectNoDuplicateActions();
+  await expect(
+    more.locator(".format-panel button[aria-label='插入表格']"),
+  ).toHaveCount(0);
+  await more.locator(":scope > summary").click();
 
   const settings = page.locator("details.settings-menu").first();
   await settings.locator("summary").click();
@@ -2236,11 +2278,20 @@ test("format toolbar grows with available width and menus close on outside click
   await page.getByRole("textbox", { name: "Markdown 源码编辑器" }).click();
   await expect(settings).not.toHaveAttribute("open", "");
 
-  const more = toolbar.locator("details.format-menu");
   await more.locator(":scope > summary").click();
   await expect(more).toHaveAttribute("open", "");
   await page.locator(".statusbar").click();
   await expect(more).not.toHaveAttribute("open", "");
+
+  await page.setViewportSize({ width: 360, height: 640 });
+  await expect(
+    toolbar.locator(":scope > button[aria-label='插入表格']"),
+  ).toHaveCount(0);
+  await more.locator(":scope > summary").click();
+  await expect(
+    more.locator(".format-panel").getByRole("button", { name: "插入表格" }),
+  ).toBeVisible();
+  await expectNoDuplicateActions();
 });
 
 test("narrow and forced-colors windows keep editor controls reachable", async ({
@@ -2582,11 +2633,7 @@ test("table insertion and Tab navigation include empty cells and new rows", asyn
 }) => {
   await page.goto("/");
   await clickFileAction(page, "新建");
-  await page.locator("details.format-menu > summary").click();
-  await page
-    .locator("details.format-menu .format-panel")
-    .getByRole("button", { name: "插入表格" })
-    .click();
+  await clickMoreFormat(page, "插入表格");
 
   const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
   const starter = [

@@ -184,10 +184,6 @@ const toolbarFormattingActions = [
     return action;
   }),
 ];
-const moreFormattingActions = formattingActions.filter(
-  (action) => !quickFormattingCommands.has(action.command),
-);
-
 const tableActions: readonly {
   readonly command: TableEditCommand;
   readonly label: string;
@@ -530,6 +526,16 @@ export function AppShell({
     !recoveryReady || session.readOnly
       ? 0
       : Math.min(toolbarFocusIndex, visibleToolbarActions);
+  const visibleFormattingActions = toolbarFormattingActions.slice(
+    0,
+    visibleToolbarActions,
+  );
+  const visibleFormattingCommands = new Set(
+    visibleFormattingActions.map((action) => action.command),
+  );
+  const moreFormattingActions = formattingActions.filter(
+    (action) => !visibleFormattingCommands.has(action.command),
+  );
 
   useEffect(() => {
     const toolbar = toolbarRef.current;
@@ -3880,26 +3886,24 @@ export function AppShell({
           >
             大纲
           </button>
-          {toolbarFormattingActions
-            .slice(0, visibleToolbarActions)
-            .map((action, index) => {
-              const toolbarIndex = index + 1;
-              return (
-                <button
-                  key={action.command}
-                  type="button"
-                  aria-label={action.title}
-                  title={action.title}
-                  disabled={!recoveryReady || session.readOnly}
-                  data-toolbar-index={toolbarIndex}
-                  tabIndex={toolbarTabStopIndex === toolbarIndex ? 0 : -1}
-                  onFocus={() => setToolbarFocusIndex(toolbarIndex)}
-                  onClick={() => editor.current?.format(action.command)}
-                >
-                  {action.label}
-                </button>
-              );
-            })}
+          {visibleFormattingActions.map((action, index) => {
+            const toolbarIndex = index + 1;
+            return (
+              <button
+                key={action.command}
+                type="button"
+                aria-label={action.title}
+                title={action.title}
+                disabled={!recoveryReady || session.readOnly}
+                data-toolbar-index={toolbarIndex}
+                tabIndex={toolbarTabStopIndex === toolbarIndex ? 0 : -1}
+                onFocus={() => setToolbarFocusIndex(toolbarIndex)}
+                onClick={() => editor.current?.format(action.command)}
+              >
+                {action.label}
+              </button>
+            );
+          })}
           <details className="format-menu" onKeyDown={handleDisclosureKeyDown}>
             <summary>更多格式</summary>
             <div
