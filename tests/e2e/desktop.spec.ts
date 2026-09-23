@@ -1037,6 +1037,8 @@ test("native dirty close awaits asynchronous cancel and confirm results", async 
 
   await closeButton.click();
   await expect.poll(() => readEditorSource(editor)).toBe("");
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await expect(page.getByText("未打开文件", { exact: true })).toBeVisible();
 
   const nativeState = await readNativeMockState(page);
   expect(
@@ -2178,6 +2180,7 @@ test("ARIA landmarks and disclosures support keyboard-only navigation", async ({
   page,
 }) => {
   await page.goto("/");
+  await clickFileAction(page, "新建");
 
   const activeTab = page.getByRole("tab", { selected: true });
   const tabId = await activeTab.getAttribute("id");
@@ -3014,6 +3017,7 @@ test("startup arguments and native file drops open Markdown tabs", async ({
   const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
   await expect.poll(() => readEditorSource(editor)).toBe("# 启动文件");
   await expect(page.getByRole("tab", { name: /启动/u })).toBeVisible();
+  await expect(page.getByRole("tab")).toHaveCount(1);
   await expect
     .poll(async () => (await readNativeMockState(page)).commands)
     .toContain("plugin:event|listen");
@@ -3025,6 +3029,39 @@ test("startup arguments and native file drops open Markdown tabs", async ({
   });
   await expect.poll(() => readEditorSource(editor)).toBe("# 拖入文件");
   await expect(page.getByRole("tab", { name: /拖入/u })).toBeVisible();
+  await expect(page.getByRole("tab")).toHaveCount(2);
+});
+
+test("launch starts without an untitled tab and first editing or open creates one", async ({
+  page,
+}) => {
+  await installNativeAdapterMock(page);
+  await page.goto("/");
+  const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await expect(page.getByText("未打开文件", { exact: true })).toBeVisible();
+  await expect.poll(() => readEditorSource(editor)).toBe("");
+
+  await page.evaluate(() => {
+    const runtime = window as typeof window & {
+      __MDEDITOR_E2E_EMIT_EXTERNAL__?: (name: string, source: string) => void;
+    };
+    runtime.__MDEDITOR_E2E_EMIT_EXTERNAL__?.("第一篇.md", "# 第一篇");
+  });
+  await expect(page.getByRole("tab", { name: /第一篇/u })).toBeVisible();
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect.poll(() => readEditorSource(editor)).toBe("# 第一篇");
+
+  await page.getByRole("button", { name: "关闭 第一篇.md" }).click();
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await clickFileAction(page, "新建");
+  await expect(page.getByRole("tab", { name: /未命名 1/u })).toBeVisible();
+  await page.getByRole("button", { name: "关闭 未命名 1" }).click();
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await editor.click();
+  await page.keyboard.insertText("# 新草稿");
+  await expect(page.getByRole("tab", { name: /未命名 1/u })).toBeVisible();
+  await expect.poll(() => readEditorSource(editor)).toBe("# 新草稿");
 });
 
 test("status bar updates document and selection statistics", async ({

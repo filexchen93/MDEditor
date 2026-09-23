@@ -413,6 +413,16 @@ export function AppShell({
     createWorkspaceState,
   );
   const workspaceRef = useRef(workspace);
+  const [standbyDocumentId, setStandbyDocumentId] = useState<string | null>(
+    initialDocument.session.id,
+  );
+  const standbyDocumentIdRef = useRef<string | null>(
+    initialDocument.session.id,
+  );
+  function updateStandbyDocumentId(id: string | null) {
+    standbyDocumentIdRef.current = id;
+    setStandbyDocumentId(id);
+  }
   const [recoveryStatus, setRecoveryStatus] = useState<
     "checking" | "ready" | "unavailable"
   >(() => (documentAdapter === undefined ? "ready" : "checking"));
@@ -785,6 +795,12 @@ export function AppShell({
         spellcheckLanguage: settingsRef.current.spellcheckLanguage,
         complexRenderers,
         onTextChange: (text) => {
+          if (
+            text !== "" &&
+            standbyDocumentIdRef.current === activeDocumentId
+          ) {
+            updateStandbyDocumentId(null);
+          }
           dispatchWorkspace({
             type: "edit",
             id: activeDocumentId,
@@ -1088,6 +1104,7 @@ export function AppShell({
           ),
           activeId: restoredActiveId,
         });
+        updateStandbyDocumentId(null);
         setNotice(
           `已恢复${recoveryDescription}的未保存内容。为保护原文件，所有标签均需使用“另存为”确认保存位置。`,
         );
@@ -1291,7 +1308,19 @@ export function AppShell({
       setNotice("该文件已在标签页中打开");
     } else {
       pendingTexts.current.set(decoded.session.id, decoded.text);
-      dispatchWorkspace({ type: "add", session: decoded.session });
+      const standbyId = standbyDocumentIdRef.current;
+      if (standbyId !== null) {
+        updateStandbyDocumentId(null);
+        const standbyEditor = editors.current.get(standbyId);
+        standbyEditor?.editor.destroy();
+        standbyEditor?.host.remove();
+        editors.current.delete(standbyId);
+        if (editor.current === standbyEditor?.editor) editor.current = null;
+        pendingTexts.current.delete(standbyId);
+        dispatchWorkspace({ type: "replace", session: decoded.session });
+      } else {
+        dispatchWorkspace({ type: "add", session: decoded.session });
+      }
     }
     if (decoded.session.readOnly) {
       setNotice(
@@ -2463,6 +2492,12 @@ export function AppShell({
   }
 
   function newDocument() {
+    if (standbyDocumentIdRef.current !== null) {
+      updateStandbyDocumentId(null);
+      editor.current?.focus();
+      setNotice(null);
+      return;
+    }
     const document: DecodedDocument = {
       text: "",
       session: createUntitledSession(globalThis.crypto.randomUUID()),
@@ -2500,7 +2535,7 @@ export function AppShell({
     if (currentWorkspace.tabs.length === 1) {
       const replacement = createUntitledSession(globalThis.crypto.randomUUID());
       pendingTexts.current.set(replacement.id, "");
-      pendingTabFocusId.current = replacement.id;
+      updateStandbyDocumentId(replacement.id);
       dispatchWorkspace({ type: "replace", session: replacement });
     } else {
       const remainingTabs = currentWorkspace.tabs.filter(
@@ -2866,7 +2901,8 @@ export function AppShell({
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [settings.shortcuts]);
 
-  const documentName = getDocumentName(session.path);
+  const standby = standbyDocumentId === activeDocumentId;
+  const documentName = standby ? "未打开文件" : getDocumentName(session.path);
   const collapsedOutlineItems =
     collapsedOutlineState.documentId === activeDocumentId
       ? collapsedOutlineState.items
@@ -3776,7 +3812,7 @@ export function AppShell({
       >
         {notice}
       </div>
-      <nav className="document-tabs" aria-label="打开的文档">
+      <nav className="document-tabs" aria-label="打开的文档" hidden={standby}>
         <div className="document-tabs-inner">
           <div role="tablist" aria-label="文档标签页">
             {workspace.tabs.map((tab, index) => {
@@ -3847,8 +3883,11 @@ export function AppShell({
       <section
         id="editor-workspace"
         className="workspace"
-        role="tabpanel"
-        aria-labelledby={`workspace-tab-${activeTabIndex}`}
+        role={standby ? "region" : "tabpanel"}
+        aria-label={standby ? "Markdown 编辑区" : undefined}
+        aria-labelledby={
+          standby ? undefined : `workspace-tab-${activeTabIndex}`
+        }
       >
         <div
           ref={toolbarRef}
