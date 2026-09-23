@@ -250,30 +250,10 @@ function isRelativeLocalImageSource(source: string): boolean {
   );
 }
 
-const initialText = `# 欢迎使用 MDEditor
-
-这是正在推进 M4 写作核心与 M5 文件夹工作流的渐进式 Markdown 编辑器。Markdown 文本仍由 CodeMirror 持有，不会复制到 React Store。
-
-- 在源码与混合模式间无损切换
-- 在混合模式中隐藏非活动 Markdown 标记，进入结构时恢复源码
-- 使用工具栏或快捷键完成可撤销的 Markdown 格式化
-- 渐进显示标题、强调、链接、引用、列表、图片与代码
-- 点击任务复选框，使用 Tab / Shift+Tab 在 GFM 表格单元格间移动
-- 打开文档大纲并点击标题，快速定位到对应源码
-- 按需渲染 KaTeX 数学公式与 Mermaid 图表，单个预览失败不会影响源码
-- 使用标签页同时编辑多个文档，每个标签保留独立选择和撤销历史
-- 切换纸张、深色或跟随系统主题，并按需配置常用快捷键
-- 使用专注模式淡化非当前块，或用打字机模式让光标保持在视口中央
-- 自动配对 Markdown 标记，并用单个撤销事务包围选区
-- 支持撤销与重做
-- 支持查找与替换
-- 保留 UTF-8、BOM 与换行元数据
-- 保存前检查外部文件变化
-
-> 渲染可以失败，但源码必须始终可见、可编辑、可安全保存。`;
+const emptyDocumentHint = "输入 Markdown，例如：# 标题";
 
 const initialDocument: DecodedDocument = {
-  text: initialText,
+  text: "",
   session: createUntitledSession("welcome"),
 };
 
@@ -415,7 +395,7 @@ export function AppShell({
   const importWorkspaceImageFilesRef = useRef(importWorkspaceImageFiles);
   importWorkspaceImageFilesRef.current = importWorkspaceImageFiles;
   const pendingTexts = useRef(
-    new Map<string, string>([[initialDocument.session.id, initialText]]),
+    new Map<string, string>([[initialDocument.session.id, ""]]),
   );
   const recoveryCheckStarted = useRef(false);
   const startupOpenStarted = useRef(false);
@@ -794,6 +774,7 @@ export function AppShell({
           : normalizeLineEndings(pendingText, "\n"),
         lineSeparator: tab.session.readOnly ? tab.session.lineEnding : "\n",
         readOnly: tab.session.readOnly,
+        placeholder: tab.session.readOnly ? undefined : emptyDocumentHint,
         mode: editorModeRef.current,
         fontSize: settingsRef.current.fontSize,
         lineWrapping: settingsRef.current.lineWrapping,

@@ -31,6 +31,7 @@ import { tags } from "@lezer/highlight";
 import {
   Decoration,
   keymap,
+  placeholder,
   ViewPlugin,
   type DecorationSet,
   type EditorView as EditorViewType,
@@ -65,6 +66,7 @@ export type EditorLineSeparator = "\n" | "\r\n";
 export interface SourceEditorOptions {
   readonly parent: HTMLElement;
   readonly text: string;
+  readonly placeholder?: string;
   readonly lineSeparator?: EditorLineSeparator;
   readonly readOnly?: boolean;
   readonly fontSize?: number;
@@ -86,6 +88,7 @@ export interface SourceEditorOptions {
 
 export interface SourceEditorStateOptions {
   readonly text: string;
+  readonly placeholder?: string;
   readonly lineSeparator?: EditorLineSeparator;
   readonly readOnly?: boolean;
   readonly fontSize?: number;
@@ -1084,6 +1087,7 @@ function createState(
       EditorState.readOnly.of(readOnly),
       EditorState.phrases.of(searchPhrases),
       EditorView.editable.of(!readOnly),
+      ...(options.placeholder ? [placeholder(options.placeholder)] : []),
       renderingExtension,
       outlineTrackerPlugin,
       statisticsTrackerPlugin,

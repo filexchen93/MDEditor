@@ -272,13 +272,17 @@ textarea {
   top: calc(100% + 8px);
   right: 0;
   display: grid;
-  width: 320px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(78vh, 680px);
+  overflow: auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--border-control);
   border-radius: 6px;
   background: var(--surface);
   box-shadow: 0 10px 30px var(--shadow);
+  white-space: normal;
 }
 
 .export-panel button {
@@ -287,28 +291,27 @@ textarea {
 }
 
 .export-panel label {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  min-width: 0;
   color: var(--text-muted);
   font-size: 12px;
 }
 
 .export-panel select,
 .export-panel input[type="text"] {
-  min-width: 112px;
+  width: 100%;
+  min-width: 0;
   color: var(--app-fg);
   background: var(--surface);
-}
-
-.export-panel input[type="text"] {
-  width: 210px;
 }
 
 .export-panel small {
   color: var(--text-muted);
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .document-print-frame,

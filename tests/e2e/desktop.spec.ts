@@ -960,7 +960,7 @@ async function readEditorSource(editor: Locator) {
           });
         sourceLine
           .querySelectorAll(
-            ".cm-widgetBuffer, .cm-md-image-widget:not([data-md-source-inline]), .cm-md-complex-widget:not([data-md-source-inline])",
+            ".cm-placeholder, .cm-widgetBuffer, .cm-md-image-widget:not([data-md-source-inline]), .cm-md-complex-widget:not([data-md-source-inline])",
           )
           .forEach((widget) => widget.remove());
         return sourceLine.textContent ?? "";
@@ -1947,17 +1947,28 @@ test("modifier link navigation handles headings, workspace files and safe extern
 });
 
 test("source editor accepts text and derives dirty state", async ({ page }) => {
+  await installNativeAdapterMock(page);
   await page.goto("/");
 
   await expect(page).toHaveTitle("MDEditor");
   const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
   await expect(editor).toBeVisible();
-  await expect(editor).toContainText("欢迎使用 MDEditor");
+  await expect(editor.locator(".cm-placeholder")).toContainText(
+    "输入 Markdown，例如：# 标题",
+  );
+  await expect.poll(() => readEditorSource(editor)).toBe("");
 
   await editor.click();
-  await page.keyboard.type("M1 ");
+  await page.keyboard.type("# 我的内容");
+  await expect.poll(() => readEditorSource(editor)).toBe("# 我的内容");
+  await expect(editor.locator(".cm-placeholder")).toHaveCount(0);
   await expect(page.getByText("未命名 · 未保存")).toBeVisible();
   await expect(page.getByText(/^修订 [1-9]\d*$/)).toBeVisible();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  const nativeState = await readNativeMockState(page);
+  expect(
+    new TextDecoder().decode(Uint8Array.from(nativeState.savedMarkdown ?? [])),
+  ).toBe("# 我的内容");
 });
 
 test("editor settings persist without losing the draft", async ({ page }) => {
@@ -2335,6 +2346,39 @@ test("narrow and forced-colors windows keep editor controls reachable", async ({
   );
   await exportMenu.locator("summary").press("Tab");
   await expect(page.getByRole("combobox", { name: "打印纸张" })).toBeFocused();
+});
+
+test("export settings and actions stay inside the panel at desktop and narrow sizes", async ({
+  page,
+}) => {
+  for (const [width, height] of [
+    [1280, 720],
+    [390, 640],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    await page.locator("details.export-menu > summary").click();
+    const panel = page.locator(".export-panel");
+    await expect(panel).toBeVisible();
+    const layout = await panel.evaluate((element) => {
+      const right = element.getBoundingClientRect().right;
+      return {
+        panelBottom: element.getBoundingClientRect().bottom,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        controlRights: [
+          ...element.querySelectorAll("select, input, button"),
+        ].map((control) => control.getBoundingClientRect().right),
+        right,
+      };
+    });
+    expect(layout.panelBottom).toBeLessThanOrEqual(height);
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+    expect(Math.max(...layout.controlRights)).toBeLessThanOrEqual(layout.right);
+    const print = panel.getByRole("button", { name: "打印 / PDF" });
+    await print.scrollIntoViewIfNeeded();
+    await expect(print).toBeInViewport();
+  }
 });
 
 test("navigation and wrapped prose fit desktop and narrow windows", async ({
