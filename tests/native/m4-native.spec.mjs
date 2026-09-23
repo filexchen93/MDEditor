@@ -332,7 +332,7 @@ describe("M4 native Tauri acceptance", () => {
     const hybrid = await exactButton("混合");
     await hybrid.click();
     await browser.waitUntil(
-      async () => (await hybrid.getAttribute("aria-pressed")) === "true",
+      async () => (await hybrid.getAttribute("aria-checked")) === "true",
     );
     assert.match(await $(".cm-md-heading-1").getText(), /原生验收/u);
 
@@ -528,9 +528,11 @@ describe("M4 native Tauri acceptance", () => {
       select.dispatchEvent(new Event("change", { bubbles: true }));
     }, file);
     await browser.waitUntil(async () =>
-      (await $('[role="tab"][aria-selected="true"]').getText()).includes(
-        "字节保真.md",
-      ),
+      (
+        await $(
+          '[role="tablist"][aria-label="文档标签页"] [role="tab"][aria-selected="true"]',
+        ).getText()
+      ).includes("字节保真.md"),
     );
     // Inactive tabs keep their own editor instances, so only target the active one.
     const editor = await $(
@@ -580,9 +582,11 @@ describe("M4 native Tauri acceptance", () => {
     await quickOpen.setValue("开始");
     await workspace.$('[role="option"][title="中文 指南/开始.md"]').click();
     await browser.waitUntil(async () =>
-      (await $('[role="tab"][aria-selected="true"]').getText()).includes(
-        "开始.md",
-      ),
+      (
+        await $(
+          '[role="tablist"][aria-label="文档标签页"] [role="tab"][aria-selected="true"]',
+        ).getText()
+      ).includes("开始.md"),
     );
     await browser.waitUntil(async () => {
       const image = await $(".cm-md-image-widget img");
@@ -598,9 +602,11 @@ describe("M4 native Tauri acceptance", () => {
     await workspace.$('[aria-label="快速打开"] input').setValue("下一步");
     await workspace.$('[role="option"][title="中文 指南/下一步.md"]').click();
     await browser.waitUntil(async () =>
-      (await $('[role="tab"][aria-selected="true"]').getText()).includes(
-        "下一步.md",
-      ),
+      (
+        await $(
+          '[role="tablist"][aria-label="文档标签页"] [role="tab"][aria-selected="true"]',
+        ).getText()
+      ).includes("下一步.md"),
     );
     await exactButton("源码").then((button) => button.click());
     const editor = await $(
@@ -672,9 +678,11 @@ describe("M4 native Tauri acceptance", () => {
       )
       .click();
     await browser.waitUntil(async () =>
-      (await $('[role="tab"][aria-selected="true"]').getText()).includes(
-        "可访问性.md",
-      ),
+      (
+        await $(
+          '[role="tablist"][aria-label="文档标签页"] [role="tab"][aria-selected="true"]',
+        ).getText()
+      ).includes("可访问性.md"),
     );
     await expectNativeAccessible("workspace document");
 
