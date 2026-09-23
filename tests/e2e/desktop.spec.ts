@@ -972,7 +972,10 @@ async function readEditorSource(editor: Locator) {
 
 async function clickMoreFormat(page: Page, name: string) {
   await page.locator("details.format-menu > summary").click();
-  await page.getByRole("button", { name, exact: true }).click();
+  await page
+    .locator("details.format-menu .format-panel")
+    .getByRole("button", { name, exact: true })
+    .click();
 }
 
 test("recovery confirmation failures preserve the native snapshot", async ({
@@ -1350,6 +1353,7 @@ test("optional Pandoc export receives only offline sanitized HTML", async ({
   await editor.click();
   await editor.press("ControlOrMeta+A");
   await page.keyboard.insertText(remoteSource);
+  await page.getByText("导出", { exact: true }).click();
   await page.getByRole("button", { name: "导出 DOCX（Pandoc）" }).click();
   await expect(page.getByRole("status")).toContainText(
     "DOCX 导出失败：DOCX 导出不读取本地或远程图片",
@@ -2178,20 +2182,24 @@ test("ARIA landmarks and disclosures support keyboard-only navigation", async ({
   });
   const outline = toolbar.getByRole("button", { name: "大纲" });
   const bold = toolbar.getByRole("button", { name: "粗体" });
-  const link = toolbar.getByRole("button", { name: /链接/ });
   const more = toolbar.locator("details.format-menu > summary");
   await outline.focus();
   await outline.press("ArrowRight");
   await expect(bold).toBeFocused();
   await expect(bold).toHaveAttribute("tabindex", "0");
   await bold.press("End");
-  await expect(link).toBeFocused();
-  await link.press("ArrowRight");
+  const lastAction = toolbar.locator("button[data-toolbar-index]").last();
+  await expect(lastAction).toBeFocused();
+  await lastAction.press("ArrowRight");
   await expect(outline).toBeFocused();
   await more.focus();
   await more.press("Enter");
-  await expect(toolbar.getByRole("button", { name: "无序列表" })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "插入表格" })).toBeVisible();
+  await expect(
+    toolbar.locator(".format-panel").getByRole("button", { name: "无序列表" }),
+  ).toBeVisible();
+  await expect(
+    toolbar.locator(".format-panel").getByRole("button", { name: "插入表格" }),
+  ).toBeVisible();
   await more.press("Escape");
   await expect(more).toBeFocused();
 
@@ -2203,6 +2211,36 @@ test("ARIA landmarks and disclosures support keyboard-only navigation", async ({
   await theme.press("Escape");
   await expect(settings).not.toHaveAttribute("open", "");
   await expect(settingsSummary).toBeFocused();
+});
+
+test("format toolbar grows with available width and menus close on outside click", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.goto("/");
+
+  const toolbar = page.getByRole("toolbar", {
+    name: "Markdown 格式与插入工具",
+  });
+  const actions = toolbar.locator("button[data-toolbar-index]");
+  const compactCount = await actions.count();
+  await expect(toolbar.locator("details.format-menu > summary")).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect.poll(() => actions.count()).toBeGreaterThan(compactCount);
+  await expect(toolbar.getByRole("button", { name: "一级标题" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "无序列表" })).toBeVisible();
+
+  const settings = page.locator("details.settings-menu").first();
+  await settings.locator("summary").click();
+  await expect(settings).toHaveAttribute("open", "");
+  await page.getByRole("textbox", { name: "Markdown 源码编辑器" }).click();
+  await expect(settings).not.toHaveAttribute("open", "");
+
+  const more = toolbar.locator("details.format-menu");
+  await more.locator(":scope > summary").click();
+  await expect(more).toHaveAttribute("open", "");
+  await page.locator(".statusbar").click();
+  await expect(more).not.toHaveAttribute("open", "");
 });
 
 test("narrow and forced-colors windows keep editor controls reachable", async ({
@@ -2545,7 +2583,10 @@ test("table insertion and Tab navigation include empty cells and new rows", asyn
   await page.goto("/");
   await clickFileAction(page, "新建");
   await page.locator("details.format-menu > summary").click();
-  await page.getByRole("button", { name: "插入表格" }).click();
+  await page
+    .locator("details.format-menu .format-panel")
+    .getByRole("button", { name: "插入表格" })
+    .click();
 
   const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
   const starter = [
@@ -2942,6 +2983,23 @@ test("focus, typewriter, and Markdown pairing preserve canonical source", async 
   await focusButton.click();
   await expect(focusButton).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".cm-focus-dimmed").first()).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator(".cm-focus-dimmed")
+        .first()
+        .evaluate((line) => getComputedStyle(line).opacity),
+    )
+    .toBe("1");
+  await editor.focus();
+  await expect
+    .poll(() =>
+      page
+        .locator(".cm-focus-dimmed")
+        .first()
+        .evaluate((line) => getComputedStyle(line).opacity),
+    )
+    .toBe("0.82");
   await expect(page.locator(".document-statistics")).toHaveAttribute(
     "aria-label",
     new RegExp(`${sourceCharacters} 字符`),

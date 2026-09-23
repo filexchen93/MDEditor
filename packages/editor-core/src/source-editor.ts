@@ -773,15 +773,15 @@ const focusModeExtension = [
     decorations: (renderer) => renderer.decorations,
   }),
   EditorView.baseTheme({
-    ".cm-line.cm-focus-dimmed": {
-      opacity: "0.28",
+    "&.cm-focused .cm-line.cm-focus-dimmed": {
+      opacity: "0.82",
       transition: "opacity 120ms ease",
-    },
-    "&.cm-focused .cm-line:not(.cm-focus-dimmed)": {
-      opacity: "1",
     },
     "@media (prefers-reduced-motion: reduce)": {
       ".cm-line.cm-focus-dimmed": { transition: "none" },
+    },
+    "@media (prefers-contrast: more), (forced-colors: active)": {
+      "&.cm-focused .cm-line.cm-focus-dimmed": { opacity: "1" },
     },
   }),
 ];
@@ -993,7 +993,8 @@ function createEditorTheme(fontSize: number) {
     },
     ".cm-scroller": {
       overflow: "auto",
-      fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+      fontFamily:
+        '"Cascadia Code", Consolas, "Microsoft YaHei UI", "Noto Sans SC", monospace',
       lineHeight: "1.75",
     },
     ".cm-content": {

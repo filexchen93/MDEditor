@@ -160,6 +160,30 @@ const quickFormattingCommands = new Set<MarkdownFormatCommand>([
 const quickFormattingActions = formattingActions.filter((action) =>
   quickFormattingCommands.has(action.command),
 );
+const toolbarFormattingActions = [
+  ...quickFormattingActions,
+  ...(
+    [
+      "heading1",
+      "heading2",
+      "bulletList",
+      "orderedList",
+      "taskList",
+      "blockquote",
+      "codeBlock",
+      "image",
+      "table",
+      "inlineCode",
+      "strikethrough",
+      "heading3",
+    ] as const
+  ).map((command) => {
+    const action = formattingActions.find((item) => item.command === command);
+    if (action === undefined)
+      throw new Error(`Missing formatting action: ${command}`);
+    return action;
+  }),
+];
 const moreFormattingActions = formattingActions.filter(
   (action) => !quickFormattingCommands.has(action.command),
 );
@@ -467,6 +491,8 @@ export function AppShell({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [toolbarFocusIndex, setToolbarFocusIndex] = useState(0);
+  const [visibleToolbarActions, setVisibleToolbarActions] = useState(3);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pandocStatus, setPandocStatus] = useState<PandocStatus | null>(null);
   const activeTab = getActiveWorkspaceTab(workspace);
@@ -501,7 +527,81 @@ export function AppShell({
     [activeDocumentTheme, activeTrustedDocumentCss],
   );
   const toolbarTabStopIndex =
-    !recoveryReady || session.readOnly ? 0 : toolbarFocusIndex;
+    !recoveryReady || session.readOnly
+      ? 0
+      : Math.min(toolbarFocusIndex, visibleToolbarActions);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (toolbar === null) return;
+    const outlineButton = toolbar.querySelector<HTMLButtonElement>(
+      'button[data-toolbar-index="0"]',
+    );
+    const moreSummary = toolbar.querySelector<HTMLElement>(
+      ".format-menu > summary",
+    );
+    if (outlineButton === null || moreSummary === null) return;
+    const context = document.createElement("canvas").getContext("2d");
+    if (context === null) return;
+    let active = true;
+
+    const measure = () => {
+      if (!active) return;
+      const toolbarStyle = getComputedStyle(toolbar);
+      const buttonStyle = getComputedStyle(outlineButton);
+      context.font = buttonStyle.font;
+      const gap = Number.parseFloat(toolbarStyle.columnGap) || 0;
+      const buttonExtra =
+        Number.parseFloat(buttonStyle.paddingLeft) +
+        Number.parseFloat(buttonStyle.paddingRight) +
+        Number.parseFloat(buttonStyle.borderLeftWidth) +
+        Number.parseFloat(buttonStyle.borderRightWidth) +
+        4;
+      let available =
+        toolbar.clientWidth -
+        Number.parseFloat(toolbarStyle.paddingLeft) -
+        Number.parseFloat(toolbarStyle.paddingRight) -
+        outlineButton.getBoundingClientRect().width -
+        moreSummary.getBoundingClientRect().width -
+        gap * 2;
+      let count = 0;
+      for (const action of toolbarFormattingActions) {
+        const width =
+          Math.ceil(context.measureText(action.label).width) +
+          buttonExtra +
+          gap;
+        if (available < width) break;
+        available -= width;
+        count += 1;
+      }
+      setVisibleToolbarActions(count);
+    };
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    measure();
+    void document.fonts.ready.then(measure);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const closeMenusOutside = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      document
+        .querySelectorAll<HTMLDetailsElement>(
+          ".titlebar-actions > details[open], .editor-toolbar > details.format-menu[open]",
+        )
+        .forEach((menu) => {
+          if (!menu.contains(event.target as Node)) menu.open = false;
+        });
+    };
+    document.addEventListener("pointerdown", closeMenusOutside, true);
+    return () =>
+      document.removeEventListener("pointerdown", closeMenusOutside, true);
+  }, []);
   const dirtyTabSignature = workspace.tabs
     .filter(({ session: tabSession }) => isDirty(tabSession))
     .map(({ id, session: tabSession }) => `${id}:${tabSession.currentRevision}`)
@@ -3764,6 +3864,7 @@ export function AppShell({
         aria-labelledby={`workspace-tab-${activeTabIndex}`}
       >
         <div
+          ref={toolbarRef}
           className="editor-toolbar"
           role="toolbar"
           aria-label="Markdown 格式与插入工具"
@@ -3779,24 +3880,26 @@ export function AppShell({
           >
             大纲
           </button>
-          {quickFormattingActions.map((action, index) => {
-            const toolbarIndex = index + 1;
-            return (
-              <button
-                key={action.command}
-                type="button"
-                aria-label={action.title}
-                title={action.title}
-                disabled={!recoveryReady || session.readOnly}
-                data-toolbar-index={toolbarIndex}
-                tabIndex={toolbarTabStopIndex === toolbarIndex ? 0 : -1}
-                onFocus={() => setToolbarFocusIndex(toolbarIndex)}
-                onClick={() => editor.current?.format(action.command)}
-              >
-                {action.label}
-              </button>
-            );
-          })}
+          {toolbarFormattingActions
+            .slice(0, visibleToolbarActions)
+            .map((action, index) => {
+              const toolbarIndex = index + 1;
+              return (
+                <button
+                  key={action.command}
+                  type="button"
+                  aria-label={action.title}
+                  title={action.title}
+                  disabled={!recoveryReady || session.readOnly}
+                  data-toolbar-index={toolbarIndex}
+                  tabIndex={toolbarTabStopIndex === toolbarIndex ? 0 : -1}
+                  onFocus={() => setToolbarFocusIndex(toolbarIndex)}
+                  onClick={() => editor.current?.format(action.command)}
+                >
+                  {action.label}
+                </button>
+              );
+            })}
           <details className="format-menu" onKeyDown={handleDisclosureKeyDown}>
             <summary>更多格式</summary>
             <div
