@@ -607,7 +607,11 @@ export function collectProgressiveDecorations(
 }
 
 export function sanitizeImageSource(source: string): string | null {
-  const candidate = source.trim();
+  const trimmed = source.trim();
+  const candidate =
+    trimmed.startsWith("<") && trimmed.endsWith(">")
+      ? trimmed.slice(1, -1)
+      : trimmed;
   if (
     candidate === "" ||
     [...candidate].some((character) => {
@@ -625,6 +629,10 @@ export function sanitizeImageSource(source: string): string | null {
       ? candidate
       : null;
   }
+
+  // The desktop resolver checks the opened document's directory before it
+  // reads an absolute Windows path. Keep other protocols blocked here.
+  if (/^[a-z]:[\\/]/iu.test(candidate)) return candidate;
 
   const protocol = /^([a-z][a-z0-9+.-]*):/iu
     .exec(candidate)?.[1]
@@ -737,8 +745,14 @@ class ImagePreviewWidget extends WidgetType {
     this.liveElements.add(wrapper);
     wrapper.append(fallback);
     const external = /^(?:data:|https?:)/iu.test(this.source);
-    if (external || this.resolveImageSource === undefined) {
+    if (
+      external ||
+      (this.resolveImageSource === undefined &&
+        !/^[a-z]:[\\/]/iu.test(this.source))
+    ) {
       showImage(this.source);
+    } else if (this.resolveImageSource === undefined) {
+      fallback.textContent = `图片预览已阻止${this.alt ? `：${this.alt}` : ""}`;
     } else {
       fallback.textContent = `正在加载图片${this.alt ? `：${this.alt}` : ""}`;
       void this.resolveImageSource(this.source)

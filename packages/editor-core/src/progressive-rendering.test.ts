@@ -111,6 +111,7 @@ describe("progressive Markdown rendering", () => {
       markdown: "![unsafe](javascript:alert(1))",
     });
     expect(sanitizeImageSource("file:///secret.png")).toBeNull();
+    expect(sanitizeImageSource("<javascript:alert(1)>")).toBeNull();
     expect(
       sanitizeImageSource("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="),
     ).toBeNull();
@@ -120,6 +121,27 @@ describe("progressive Markdown rendering", () => {
     expect(sanitizeImageSource("HTTPS://example.com/cover.png")).toBe(
       "HTTPS://example.com/cover.png",
     );
+  });
+
+  it("recognizes Windows absolute image references for the scoped native resolver", () => {
+    const path = String.raw`C:\Users\batchat\Downloads\截图.png`;
+    const state = createSourceEditorState({
+      text: `![图片描述](${path})`,
+      mode: "hybrid",
+    });
+    const image = collectProgressiveDecorations(state).find(
+      ({ kind }) => kind === "image",
+    );
+    expect(image?.image?.source).toBe(path);
+    const spacedPath = String.raw`C:\中文 路径\截图.png`;
+    const bracketed = createSourceEditorState({
+      text: `![图片描述](<${spacedPath}>)`,
+      mode: "hybrid",
+    });
+    const bracketedImage = collectProgressiveDecorations(bracketed).find(
+      ({ kind }) => kind === "image",
+    );
+    expect(bracketedImage?.image?.source).toBe(spacedPath);
   });
 
   it("derives isolated KaTeX and Mermaid blocks without changing source", () => {

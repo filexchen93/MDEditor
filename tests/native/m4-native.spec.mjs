@@ -574,13 +574,14 @@ describe("M4 native Tauri acceptance", () => {
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlwsAAAAASUVORK5CYII=",
       "base64",
     );
-    await writeFile(path.join(path.dirname(file), "本地图.png"), png);
+    const imagePath = path.join(path.dirname(file), "本地图.png");
+    await writeFile(imagePath, png);
     const editor = await $(
       '.editor-document-host:not([hidden]) [role="textbox"]',
     );
     await replaceEditorSource(
       editor,
-      "# 单文件图片\n\n![本地图](%E6%9C%AC%E5%9C%B0%E5%9B%BE.png)",
+      `# 单文件图片\n\n![本地图](<${imagePath}>)\n\n`,
     );
     await browser.waitUntil(async () => {
       const image = await $(".cm-md-image-widget img");

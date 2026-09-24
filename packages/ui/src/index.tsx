@@ -240,6 +240,7 @@ function importedImageFileName(file: File, index: number): string {
 
 function isRelativeLocalImageSource(source: string): boolean {
   const candidate = source.trim();
+  if (/^[a-z]:[\\/]/iu.test(candidate)) return true;
   return (
     candidate !== "" &&
     !candidate.startsWith("#") &&

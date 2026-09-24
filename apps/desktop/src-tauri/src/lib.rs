@@ -398,6 +398,32 @@ fn authorized_image_document(
     Ok((root, name))
 }
 
+fn resolve_scoped_image_link(
+    root: &Path,
+    source_relative_path: &str,
+    target: &str,
+) -> Result<(PathBuf, &'static str), String> {
+    if !Path::new(target).is_absolute() {
+        return resolve_workspace_image_link(root, source_relative_path, target);
+    }
+    let image = normalize_existing_path(Path::new(target))?;
+    let relative = image
+        .strip_prefix(root)
+        .map_err(|_| "拒绝读取当前文档目录或授权工作区外的图片".to_owned())?;
+    let encoded = relative
+        .components()
+        .map(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(|part| urlencoding::encode(part).into_owned())
+                .ok_or_else(|| "图片路径包含无法解析的字符".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .join("/");
+    resolve_workspace_image_link(root, source_relative_path, &encoded)
+}
+
 fn is_authorized_root(state: &State<'_, AuthorizedRoots>, root: &Path) -> Result<bool, String> {
     Ok(state
         .0
@@ -757,7 +783,7 @@ async fn read_workspace_image(
     if !is_authorized_root(&authorized_roots, &root)? {
         return Err("拒绝读取未经文件夹选择器授权的工作区图片".to_owned());
     }
-    let (path, mime) = resolve_workspace_image_link(&root, &source_relative_path, &target)?;
+    let (path, mime) = resolve_scoped_image_link(&root, &source_relative_path, &target)?;
     let file = fs::File::open(&path).map_err(|error| format!("打开本地图片失败：{error}"))?;
     let mut bytes = Vec::new();
     file.take(MAX_WORKSPACE_IMAGE_PREVIEW_BYTES + 1)
@@ -845,7 +871,7 @@ async fn read_document_image(
 ) -> Result<WorkspaceImagePreviewResponse, String> {
     let (root, source_relative_path) =
         authorized_image_document(&authorized_paths, &document_path)?;
-    let (path, mime) = resolve_workspace_image_link(&root, &source_relative_path, &target)?;
+    let (path, mime) = resolve_scoped_image_link(&root, &source_relative_path, &target)?;
     let file = fs::File::open(&path).map_err(|error| format!("打开本地图片失败：{error}"))?;
     let mut bytes = Vec::new();
     file.take(MAX_WORKSPACE_IMAGE_PREVIEW_BYTES + 1)
@@ -1100,9 +1126,51 @@ async fn move_workspace_entry(
 
 #[cfg(test)]
 mod workspace_authorization_tests {
-    use super::{contains_authorized_path, relocate_authorized_paths, WorkspaceSearchEvent};
+    use super::{
+        contains_authorized_path, relocate_authorized_paths, resolve_scoped_image_link,
+        WorkspaceSearchEvent,
+    };
     use crate::workspace_io::WorkspaceSearchMatch;
-    use std::{collections::HashSet, path::PathBuf};
+    use std::{collections::HashSet, fs, path::PathBuf, time::SystemTime};
+
+    #[test]
+    fn resolves_absolute_images_only_inside_the_document_directory() {
+        let fixture = std::env::temp_dir().join(format!(
+            "mdeditor-absolute-image-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("current time")
+                .as_nanos()
+        ));
+        let root = fixture.join("文档");
+        fs::create_dir_all(&root).expect("create document directory");
+        fs::write(root.join("说明.md"), "# 图片").expect("write document");
+        let inside = root.join("截图.png");
+        fs::write(&inside, [1, 2, 3]).expect("write image");
+        let outside = fixture.join("外部.png");
+        fs::write(&outside, [1, 2, 3]).expect("write outside image");
+        let root = fs::canonicalize(root).expect("canonicalize document directory");
+
+        let (resolved, mime) = resolve_scoped_image_link(
+            &root,
+            "说明.md",
+            inside.to_str().expect("image path is UTF-8"),
+        )
+        .expect("preview image beside document");
+        assert_eq!(
+            resolved,
+            fs::canonicalize(inside).expect("canonicalize image")
+        );
+        assert_eq!(mime, "image/png");
+        assert!(resolve_scoped_image_link(
+            &root,
+            "说明.md",
+            outside.to_str().expect("outside path is UTF-8")
+        )
+        .is_err());
+        fs::remove_dir_all(fixture).expect("remove image fixture");
+    }
 
     #[test]
     fn relocates_only_authorized_documents_beneath_the_moved_entry() {

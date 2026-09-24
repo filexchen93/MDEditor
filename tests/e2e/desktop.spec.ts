@@ -402,6 +402,14 @@ async function installNativeAdapterMock(
                   suggestedAlt: "本地图",
                 };
               case "read_document_image":
+                if (
+                  options.startupMarkdown?.includes("C:\\验收\\截图.png") &&
+                  args.target !== String.raw`C:\验收\截图.png`
+                ) {
+                  throw new Error(
+                    `Unexpected absolute image target: ${String(args.target)}`,
+                  );
+                }
                 saveState(state);
                 return {
                   dataUrl:
@@ -3173,6 +3181,25 @@ test("single opened Markdown file can preview, select, and drop local images", a
       "import_document_image_data",
       "import_dropped_document_image",
     ]),
+  );
+});
+
+test("single opened Markdown file previews an absolute image in its own directory", async ({
+  page,
+}) => {
+  await installNativeAdapterMock(page, {
+    startupMarkdown: String.raw`![图片描述](C:\验收\截图.png)`,
+  });
+  await page.goto("/");
+  const image = page.locator(".cm-md-image-widget img");
+  await expect(image).toBeVisible();
+  await expect(image).toHaveAttribute("src", /^data:image\/png;base64,/u);
+  await page.getByRole("radio", { name: "双栏" }).click();
+  await expect(
+    page.frameLocator('iframe[title="Markdown 实时预览"]').locator("img"),
+  ).toBeVisible();
+  expect((await readNativeMockState(page)).commands).toContain(
+    "read_document_image",
   );
 });
 
