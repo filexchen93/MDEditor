@@ -1,65 +1,54 @@
 # MDEditor
 
-MDEditor is an open-source, cross-platform, local-first Markdown desktop editor. Its first priority is lossless, reliable access to Markdown source; progressive rendering is an enhancement, never the document model.
+MDEditor is a local-first Markdown desktop editor. Your Markdown text is the document: live formatting, previews and exports are derived from it without rewriting the source.
 
-The project has completed **M3 (common enhancements)** and begun M4 Typora-class single-document authoring work. It includes a multi-document tab workspace with independent CodeMirror histories, byte-preserving UTF-8/BOM and newline handling, controlled native open/save dialogs, disk-change detection, same-directory atomic replacement, crash-recovery workspaces, recent files, persistent editor settings, and a lossless source/hybrid mode. The hybrid layer progressively derives headings, emphasis, links, quotes, lists, image widgets and highlighted code without rewriting Markdown. M3 adds accessible GFM task checkboxes, table insertion and Tab/Shift+Tab cell navigation with automatic row creation, an asynchronously derived document outline with source jump navigation, isolated on-demand KaTeX and Mermaid previews, sanitized standalone HTML export, system print/PDF output, paper/dark/system themes, and six configurable application shortcuts. Future product work prioritizes live-preview writing, extended Markdown, folder/search/image workflows and output fidelity; signing, automatic updates and automated publication remain deferred. Supported round trips are byte-identical, Windows fault injection proves atomic-save outcomes, and dedicated Chinese IME coverage verifies stable composition, selection and history.
+**Project status:** Core editing is working. Advanced writing, workspace and export features are still undergoing native-app and release validation. Windows x64 is the first planned installer target; macOS and Linux are source and CI compatibility targets. See the [roadmap](docs/ROADMAP.md) and [platform support](docs/PLATFORM_SUPPORT.md) for details.
 
-## Architecture
+## What you can do
 
-```text
-@mdeditor/ui → @mdeditor/editor-core → @mdeditor/markdown
-             ⇢ @mdeditor/renderers (lazy KaTeX/Mermaid chunks)
-             → @mdeditor/document-session
-future plugin runtime → @mdeditor/plugin-api → explicit host capabilities
-desktop web adapter → controlled Tauri APIs
-```
+- **Write and recover safely:** work in multiple tabs with independent undo histories; preserve UTF-8 BOM, line endings and final newlines; detect changes on disk; save atomically and recover unsaved work after a crash.
+- **Edit Markdown directly:** switch between source and hybrid views, use the formatting toolbar, find and replace text, navigate the outline, edit GFM tables and task lists, and use focus or typewriter mode.
+- **Work with local files:** open individual documents or an explicitly authorized folder, search the workspace, follow local links and import images by file picker, paste or drag and drop.
+- **Preview and export:** render KaTeX, Mermaid and local images; export sanitized HTML and PNG; print or save as PDF; and optionally export DOCX through Pandoc. Offline US/UK English spellcheck is opt-in.
 
-Markdown text will be the canonical document state. UI state must not duplicate the complete editor text, and preview serializers must never rewrite source documents.
+The Markdown profile covers CommonMark, GFM tables, task lists, strikethrough and autolinks, plus footnotes, YAML front matter, `[toc]`, GitHub alerts, math and Mermaid. Markdown remains the only saved document state.
 
-## Requirements
+## Run from source
 
-- Node.js 22.13 or newer (Node.js 24 is used in CI)
-- pnpm 11 via Corepack
-- Rust stable and the Tauri 2 platform prerequisites for native desktop builds
-
-## Development
+The browser-hosted development mode needs Node.js 22.13 or newer and pnpm 11 via Corepack. The native app also needs Rust and the [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```shell
 corepack enable
 pnpm install
-pnpm run check
 pnpm dev
 ```
 
-`pnpm dev` starts the browser-hosted frontend. After installing the Rust/Tauri prerequisites, use `pnpm desktop dev` to run the native window.
+`pnpm dev` starts the browser-hosted frontend. For native file dialogs and other desktop features, run `pnpm desktop dev` after installing the Tauri prerequisites. In the app, the **文件** menu provides New, Open, Open Folder, Recent Files and Save As; Search and Save are in the top bar.
+
+## Development and checks
+
+| Command                   | Purpose                                          |
+| ------------------------- | ------------------------------------------------ |
+| `pnpm run check`          | Check formatting, build, lint and run unit tests |
+| `pnpm test:e2e`           | Build and run Playwright browser tests           |
+| `pnpm build:native-test`  | Build the isolated native test app               |
+| `pnpm test:native`        | Run native Tauri/WebView tests                   |
+| `pnpm test:native:manual` | Launch the Windows manual acceptance app         |
+
+Native tests use isolated data directories. System IME, physical-keyboard and dialog checks still require manual acceptance; automated composition tests do not replace them. See the [contribution guide](CONTRIBUTING.md) for development checks.
 
 ## Distribution
 
-The current distribution model is intentionally lightweight: build an unsigned
-Windows installer from a versioned commit, smoke-test it, publish its SHA-256
-checksum, and upload both manually to the Git hosting release/download area.
-Signing, built-in updates and automated publication are not current requirements.
-See [the manual distribution checklist](docs/MANUAL_DISTRIBUTION.md).
+The planned downloadable package is an unsigned Windows x64 installer, built and uploaded manually with a SHA-256 checksum. Signing, built-in updates and automated publication are deferred. See the [manual distribution checklist](docs/MANUAL_DISTRIBUTION.md) before sharing a build.
 
-Useful commands:
+## Project documents
 
-| Command              | Purpose                                               |
-| -------------------- | ----------------------------------------------------- |
-| `pnpm run check`     | Run formatting, lint, unit tests and all builds       |
-| `pnpm build`         | Build every workspace package in dependency order     |
-| `pnpm test`          | Run Vitest unit and fixture checks                    |
-| `pnpm test:e2e`      | Run the Playwright browser smoke test                 |
-| `pnpm lint`          | Run the repository ESLint policy                      |
-| `pnpm format:check`  | Verify formatting without changing files              |
-| `pnpm fixtures:spec` | Deliberately refresh CommonMark/GFM fixture snapshots |
-| `pnpm benchmark`     | Run the initial deterministic corpus benchmark        |
-
-## Supported scope
-
-The current core dialect is CommonMark plus GFM tables, task lists, strikethrough and autolinks. KaTeX and Mermaid are registered optional fenced-block extensions whose browser code loads only when a matching preview is needed. The approved capability plan adds Typora-compatible footnotes, YAML front matter, TOC, alerts and inline/display math while retaining Markdown text as canonical state. Collaboration, hosted cloud sync, mobile clients, AI writing, a plugin marketplace, signed distribution and automatic updates are not goals for the current personal-open-source phase.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change and [SECURITY.md](SECURITY.md) for private vulnerability reporting. Architecture decisions live in [`docs/adr`](docs/adr); current gates and platform targets are recorded in the [roadmap](docs/ROADMAP.md), [Typora capability plan](docs/TYPORA_PARITY_PLAN.md) and [platform baseline](docs/PLATFORM_SUPPORT.md).
+- [Roadmap](docs/ROADMAP.md) and [Typora capability plan](docs/TYPORA_PARITY_PLAN.md)
+- [Architecture decisions](docs/adr) and [platform support](docs/PLATFORM_SUPPORT.md)
+- [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+Copyright 2026 MDEditor contributors. The project code is licensed under **GNU GPL version 3 only** (`GPL-3.0-only`); see [LICENSE](LICENSE). GPLv3 permits commercial use. If you distribute the program or a modified version, you must comply with its source-code and redistribution terms.
+
+Third-party components retain their own licenses. Previously released Apache-2.0 versions retain their original license.

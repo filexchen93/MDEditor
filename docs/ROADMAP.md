@@ -57,15 +57,16 @@ rejected, and editor preferences reconfigure without replacing the document,
 selection or undo history. Unit, browser, production-build and native atomic
 write gates pass.
 
-## Future direction — Typora-class capability without commercialization
+## Future direction — Typora-class capability
 
-The project remains personal and open source, but its Markdown product capability
-is now expected to reach the level of a mature commercial desktop editor. The
+The project remains open source under GPL-3.0-only, and its Markdown product
+capability is expected to reach the level of a mature desktop editor. The
 benchmark and implementation decisions are maintained in
 [Typora capability parity plan](TYPORA_PARITY_PLAN.md).
 
-Commercial infrastructure is not part of this goal. Signing, automatic updates,
-release channels, accounts, licensing and automated publication remain deferred.
+Commercial use is permitted by GPLv3. Paid services and release infrastructure are
+not part of this goal. Signing, automatic updates, release channels, accounts,
+commercial licensing and automated publication remain deferred.
 
 ## M4 — Typora-class single-document authoring
 

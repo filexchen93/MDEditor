@@ -1,8 +1,8 @@
 # Manual unsigned distribution
 
-This project is currently distributed for personal and open-source use. Builds
-are created locally and uploaded manually. Code signing, automatic updates and an
-automated release pipeline are intentionally deferred.
+This project is licensed under GPL-3.0-only. Builds are created locally and
+uploaded manually. Code signing, automatic updates and an automated release
+pipeline are intentionally deferred.
 
 Packaging is a delivery checklist, not the active product-development priority.
 Unless an installer is immediately needed for testing, complete the Markdown
