@@ -9,6 +9,8 @@ interface CorpusResult {
   readonly outlineItems: number;
   readonly dispatchToPaintP50Ms: number;
   readonly dispatchToPaintP95Ms: number;
+  readonly dispatchSyncP95Ms: number;
+  readonly paintWaitP95Ms: number;
 }
 
 interface EditorBenchmarkResult {
@@ -110,6 +112,8 @@ async function profileCorpus(bytes: number): Promise<CorpusResult> {
   const outlineReadyMs = performance.now() - outlineStartedAt;
 
   const dispatchDurations: number[] = [];
+  const dispatchSyncDurations: number[] = [];
+  const paintWaitDurations: number[] = [];
   for (let iteration = 0; iteration < 15; iteration += 1) {
     const dispatchStartedAt = performance.now();
     editor.applyTextChange({
@@ -117,8 +121,12 @@ async function profileCorpus(bytes: number): Promise<CorpusResult> {
       to: documentLength,
       insert: "x",
     });
+    const dispatchedAt = performance.now();
     await nextPaint();
-    dispatchDurations.push(performance.now() - dispatchStartedAt);
+    const paintedAt = performance.now();
+    dispatchSyncDurations.push(dispatchedAt - dispatchStartedAt);
+    paintWaitDurations.push(paintedAt - dispatchedAt);
+    dispatchDurations.push(paintedAt - dispatchStartedAt);
     editor.applyTextChange({
       from: documentLength,
       to: documentLength + 1,
@@ -136,6 +144,8 @@ async function profileCorpus(bytes: number): Promise<CorpusResult> {
     outlineItems,
     dispatchToPaintP50Ms: percentile(dispatchDurations, 0.5),
     dispatchToPaintP95Ms: percentile(dispatchDurations, 0.95),
+    dispatchSyncP95Ms: percentile(dispatchSyncDurations, 0.95),
+    paintWaitP95Ms: percentile(paintWaitDurations, 0.95),
   };
   editor.destroy();
   root.replaceChildren();

@@ -468,7 +468,19 @@ class OutlineTracker {
 
   private async refresh(generation: number) {
     const state = this.view.state;
-    let tree = ensureSyntaxTree(state, state.doc.length, 20);
+    // Keep the complete outline parse off the live editor state. Retaining a
+    // 10 MiB syntax tree there makes each subsequent keystroke rebalance it.
+    const outlineState = EditorState.create({
+      doc: state.doc,
+      extensions: [
+        markdown({
+          base: markdownLanguage,
+          codeLanguages,
+          extensions: coreMarkdownExtensions,
+        }),
+      ],
+    });
+    let tree = ensureSyntaxTree(outlineState, outlineState.doc.length, 20);
     while (
       tree === null &&
       this.listener !== null &&
@@ -480,7 +492,7 @@ class OutlineTracker {
         return;
       }
       if (this.listener === null || generation !== this.generation) return;
-      tree = ensureSyntaxTree(state, state.doc.length, 20);
+      tree = ensureSyntaxTree(outlineState, outlineState.doc.length, 20);
     }
 
     if (tree === null) return;
@@ -490,7 +502,7 @@ class OutlineTracker {
       this.view.state.doc === state.doc;
     if (!isCurrent()) return;
     const items = await collectDocumentOutlineIncrementally(
-      state,
+      outlineState,
       tree,
       isCurrent,
     );

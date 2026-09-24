@@ -25,6 +25,15 @@ dispatch-to-paint P50/P95, long-task count and duration, long-line opening, and
 image-widget counts before and after a viewport change. It fails when the
 documented budgets are exceeded. Results are only comparable when the device,
 OS, power mode, build mode, revision and corpus hash are reported.
+The report marks a dirty worktree explicitly; a release result requires a clean
+source snapshot.
+
+For release validation, run `pnpm benchmark:release`. It bundles the same
+editor harness with Vite's production build and serves the resulting files to
+headless Chromium. The development harness uses a dedicated Vite cache and
+scans only its own entry page, so other local release snapshots cannot supply
+CodeMirror dependencies. Both reports include synchronous dispatch and
+post-dispatch paint-wait P95 diagnostics alongside the existing total.
 
 ## M2/M3 budgets
 
@@ -60,3 +69,13 @@ and collecting the complete large outlines; incremental collection kept the
 longest individual task to 319 ms. No budget was breached. These
 development-harness numbers validate the gate and are not a substitute for a
 production-build release benchmark.
+
+## Outline parse isolation check
+
+On 2026-09-24, with the full 10 MiB outline collected before edits, a separate
+outline parse state kept the complete syntax tree out of the live editor. On a
+Windows 11 i7-10510U host, three consecutive development-harness runs measured
+10 MiB dispatch-to-paint P95 at 34.4, 35.2 and 34.6 ms. Three consecutive
+production-build runs measured 34.4, 34.9 and 34.9 ms. All six runs had no budget
+breaches and returned 56,375 outline items. These are local worktree results;
+the final release commit still needs its own recorded run.

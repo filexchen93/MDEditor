@@ -18,6 +18,7 @@ export default tseslint.config(
       ".tools/**",
       "coverage/**",
       "playwright-report/**",
+      "test-results/**",
     ],
   },
   eslint.configs.recommended,
