@@ -183,6 +183,47 @@ export function createDesktopDocumentAdapter(): DocumentAdapter {
       return response.dataUrl;
     },
 
+    async importDocumentImage(documentPath) {
+      return invoke<ImportedWorkspaceImageResponse | null>(
+        "import_document_image",
+        {
+          documentPath,
+        },
+      );
+    },
+
+    async importDocumentImageData(documentPath, fileName, bytes) {
+      return invoke<ImportedWorkspaceImageResponse>(
+        "import_document_image_data",
+        {
+          documentPath,
+          fileName,
+          bytes: [...bytes],
+        },
+      );
+    },
+
+    async importDroppedDocumentImage(documentPath, droppedPath) {
+      return invoke<ImportedWorkspaceImageResponse>(
+        "import_dropped_document_image",
+        { documentPath, droppedPath },
+      );
+    },
+
+    async readDocumentImage(documentPath, target) {
+      const response = await invoke<{ readonly dataUrl: string }>(
+        "read_document_image",
+        { documentPath, target },
+      );
+      return response.dataUrl;
+    },
+
+    async subscribeDroppedImages(listener) {
+      return listen<string>("external-image-dropped", (event) => {
+        listener(event.payload);
+      });
+    },
+
     async inspectWorkspaceImages(root) {
       return invoke<WorkspaceImageInspection>("inspect_workspace_images", {
         root,

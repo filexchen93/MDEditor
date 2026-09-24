@@ -266,6 +266,25 @@ export interface DocumentAdapter {
     sourceRelativePath: string,
     target: string,
   ) => Promise<string>;
+  readonly importDocumentImage: (
+    documentPath: string,
+  ) => Promise<ImportedWorkspaceImage | null>;
+  readonly importDocumentImageData: (
+    documentPath: string,
+    fileName: string,
+    bytes: Uint8Array,
+  ) => Promise<ImportedWorkspaceImage>;
+  readonly importDroppedDocumentImage: (
+    documentPath: string,
+    droppedPath: string,
+  ) => Promise<ImportedWorkspaceImage>;
+  readonly readDocumentImage: (
+    documentPath: string,
+    target: string,
+  ) => Promise<string>;
+  readonly subscribeDroppedImages: (
+    listener: (path: string) => void,
+  ) => Promise<() => void>;
   readonly inspectWorkspaceImages: (
     root: string,
   ) => Promise<WorkspaceImageInspection>;

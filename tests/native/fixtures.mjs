@@ -8,6 +8,10 @@ export function nativeFixturePath(runDirectory) {
   return path.join(runDirectory, "files", "中文 路径", "字节保真.md");
 }
 
+export function nativeImagePath(runDirectory) {
+  return path.join(runDirectory, "files", "中文 路径", "选择图.png");
+}
+
 export function nativeWorkspaceRoot(runDirectory) {
   return path.join(runDirectory, "workspace");
 }
@@ -30,6 +34,13 @@ export function seedNativeFiles(runDirectory) {
   const file = nativeFixturePath(runDirectory);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, encodeNativeFixture(nativeFileSource));
+  writeFileSync(
+    nativeImagePath(runDirectory),
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlwsAAAAASUVORK5CYII=",
+      "base64",
+    ),
+  );
   const workspace = nativeWorkspaceRoot(runDirectory);
   mkdirSync(workspace, { recursive: true });
   writeFileSync(

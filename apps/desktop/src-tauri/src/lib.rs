@@ -56,6 +56,9 @@ const MAXIMUM_DOCX_BYTES: usize = 256 * 1024 * 1024;
 #[derive(Default)]
 struct AuthorizedPaths(Mutex<HashSet<PathBuf>>);
 
+#[derive(Default)]
+struct DroppedImages(Mutex<HashSet<PathBuf>>);
+
 struct StartupPaths(Mutex<Vec<PathBuf>>);
 
 #[derive(Default)]
@@ -374,6 +377,27 @@ fn is_authorized(state: &State<'_, AuthorizedPaths>, path: &Path) -> Result<bool
         .contains(path))
 }
 
+fn authorized_image_document(
+    authorized_paths: &State<'_, AuthorizedPaths>,
+    document_path: &str,
+) -> Result<(PathBuf, String), String> {
+    let document = normalize_existing_path(Path::new(document_path))?;
+    if !is_authorized(authorized_paths, &document)? {
+        return Err("拒绝为未授权的文档访问本地图片".to_owned());
+    }
+    validate_workspace_document(&document)?;
+    let root = document
+        .parent()
+        .ok_or_else(|| "文档缺少所在目录".to_owned())?
+        .to_path_buf();
+    let name = document
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| "文档文件名无效".to_owned())?
+        .to_owned();
+    Ok((root, name))
+}
+
 fn is_authorized_root(state: &State<'_, AuthorizedRoots>, root: &Path) -> Result<bool, String> {
     Ok(state
         .0
@@ -531,6 +555,26 @@ fn pick_workspace_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
         .transpose()
 }
 
+fn pick_image_path(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+    // Native WebDriver cannot operate the OS picker. This override is absent
+    // from normal builds; the selected file still passes image validation.
+    #[cfg(feature = "webdriver")]
+    if let Some(path) = std::env::var_os("MDEDITOR_NATIVE_IMAGE_PATH") {
+        return Ok(Some(PathBuf::from(path)));
+    }
+
+    app.dialog()
+        .file()
+        .add_filter("图片", &["avif", "gif", "jpeg", "jpg", "png", "webp"])
+        .blocking_pick_file()
+        .map(|selected| {
+            selected
+                .into_path()
+                .map_err(|_| "当前只支持导入本地图片".to_owned())
+        })
+        .transpose()
+}
+
 #[tauri::command]
 async fn open_workspace(
     app: AppHandle,
@@ -668,17 +712,10 @@ async fn import_workspace_image(
     if !is_authorized_root(&authorized_roots, &root)? {
         return Err("拒绝向未经文件夹选择器授权的工作区导入图片".to_owned());
     }
-    let selected = app
-        .dialog()
-        .file()
-        .add_filter("图片", &["avif", "gif", "jpeg", "jpg", "png", "webp"])
-        .blocking_pick_file();
+    let selected = pick_image_path(&app)?;
     let Some(selected) = selected else {
         return Ok(None);
     };
-    let selected = selected
-        .into_path()
-        .map_err(|_| "当前只支持导入本地图片".to_owned())?;
     let (relative_path, markdown_path, suggested_alt) =
         import_workspace_image_on_disk(&root, &source_relative_path, &selected)?;
     Ok(Some(ImportedWorkspaceImageResponse {
@@ -720,6 +757,94 @@ async fn read_workspace_image(
     if !is_authorized_root(&authorized_roots, &root)? {
         return Err("拒绝读取未经文件夹选择器授权的工作区图片".to_owned());
     }
+    let (path, mime) = resolve_workspace_image_link(&root, &source_relative_path, &target)?;
+    let file = fs::File::open(&path).map_err(|error| format!("打开本地图片失败：{error}"))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_WORKSPACE_IMAGE_PREVIEW_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("读取本地图片失败：{error}"))?;
+    if bytes.len() as u64 > MAX_WORKSPACE_IMAGE_PREVIEW_BYTES {
+        return Err("本地图片在读取期间超过预览大小上限".to_owned());
+    }
+    Ok(WorkspaceImagePreviewResponse {
+        data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
+    })
+}
+
+#[tauri::command]
+async fn import_document_image(
+    app: AppHandle,
+    authorized_paths: State<'_, AuthorizedPaths>,
+    document_path: String,
+) -> Result<Option<ImportedWorkspaceImageResponse>, String> {
+    let (root, source_relative_path) =
+        authorized_image_document(&authorized_paths, &document_path)?;
+    let selected = pick_image_path(&app)?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let (relative_path, markdown_path, suggested_alt) =
+        import_workspace_image_on_disk(&root, &source_relative_path, &selected)?;
+    Ok(Some(ImportedWorkspaceImageResponse {
+        relative_path,
+        markdown_path,
+        suggested_alt,
+    }))
+}
+
+#[tauri::command]
+async fn import_document_image_data(
+    authorized_paths: State<'_, AuthorizedPaths>,
+    document_path: String,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<ImportedWorkspaceImageResponse, String> {
+    let (root, source_relative_path) =
+        authorized_image_document(&authorized_paths, &document_path)?;
+    let (relative_path, markdown_path, suggested_alt) =
+        import_workspace_image_bytes_on_disk(&root, &source_relative_path, &file_name, &bytes)?;
+    Ok(ImportedWorkspaceImageResponse {
+        relative_path,
+        markdown_path,
+        suggested_alt,
+    })
+}
+
+#[tauri::command]
+async fn import_dropped_document_image(
+    authorized_paths: State<'_, AuthorizedPaths>,
+    dropped_images: State<'_, DroppedImages>,
+    document_path: String,
+    dropped_path: String,
+) -> Result<ImportedWorkspaceImageResponse, String> {
+    let (root, source_relative_path) =
+        authorized_image_document(&authorized_paths, &document_path)?;
+    let selected = normalize_existing_path(Path::new(&dropped_path))?;
+    if !dropped_images
+        .0
+        .lock()
+        .map_err(|_| "拖放图片授权状态不可用".to_owned())?
+        .remove(&selected)
+    {
+        return Err("图片未经系统拖放授权".to_owned());
+    }
+    let (relative_path, markdown_path, suggested_alt) =
+        import_workspace_image_on_disk(&root, &source_relative_path, &selected)?;
+    Ok(ImportedWorkspaceImageResponse {
+        relative_path,
+        markdown_path,
+        suggested_alt,
+    })
+}
+
+#[tauri::command]
+async fn read_document_image(
+    authorized_paths: State<'_, AuthorizedPaths>,
+    document_path: String,
+    target: String,
+) -> Result<WorkspaceImagePreviewResponse, String> {
+    let (root, source_relative_path) =
+        authorized_image_document(&authorized_paths, &document_path)?;
     let (path, mime) = resolve_workspace_image_link(&root, &source_relative_path, &target)?;
     let file = fs::File::open(&path).map_err(|error| format!("打开本地图片失败：{error}"))?;
     let mut bytes = Vec::new();
@@ -1579,12 +1704,32 @@ pub fn run() {
         .manage(AuthorizedRoots::default())
         .manage(ActiveWorkspaceWatcher::default())
         .manage(ActiveWorkspaceSearches::default())
+        .manage(DroppedImages::default())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 let app = window.app_handle().clone();
                 let paths = paths.clone();
                 tauri::async_runtime::spawn_blocking(move || {
                     for path in paths {
+                        let is_image = path
+                            .extension()
+                            .and_then(OsStr::to_str)
+                            .map(|extension| {
+                                matches!(
+                                    extension.to_ascii_lowercase().as_str(),
+                                    "avif" | "gif" | "jpeg" | "jpg" | "png" | "webp"
+                                )
+                            })
+                            .unwrap_or(false);
+                        if is_image {
+                            if let Ok(path) = normalize_existing_path(&path) {
+                                if let Ok(mut authorized) = app.state::<DroppedImages>().0.lock() {
+                                    authorized.insert(path.clone());
+                                }
+                                let _ = app.emit("external-image-dropped", display_path(&path));
+                            }
+                            continue;
+                        }
                         let opened = open_external_document(&app, &path);
                         let _ = app.emit("external-document-opened", opened);
                     }
@@ -1602,6 +1747,10 @@ pub fn run() {
             import_workspace_image,
             import_workspace_image_data,
             read_workspace_image,
+            import_document_image,
+            import_document_image_data,
+            import_dropped_document_image,
+            read_document_image,
             inspect_workspace_images,
             inspect_workspace_image_references,
             preview_workspace_image_move,

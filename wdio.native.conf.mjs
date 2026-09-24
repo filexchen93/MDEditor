@@ -2,6 +2,7 @@ import path from "node:path";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import {
   nativeFixturePath,
+  nativeImagePath,
   nativeWorkspaceRoot,
   seedNativeFiles,
 } from "./tests/native/fixtures.mjs";
@@ -60,6 +61,7 @@ export const config = {
         env: {
           MDEDITOR_NATIVE_TEST_DATA: path.join(runDirectory, "app-data"),
           MDEDITOR_NATIVE_WORKSPACE_ROOT: nativeWorkspaceRoot(runDirectory),
+          MDEDITOR_NATIVE_IMAGE_PATH: nativeImagePath(runDirectory),
           WEBVIEW2_USER_DATA_FOLDER: path.join(runDirectory, "webview"),
         },
       },

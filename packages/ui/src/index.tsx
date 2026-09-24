@@ -388,12 +388,15 @@ export function AppShell({
   const activeWorkspaceSearch = useRef<string | null>(null);
   const linkNavigationBusy = useRef(false);
   const imageImportBusy = useRef(false);
+  const nativeImageDropQueue = useRef<Promise<void>>(Promise.resolve());
   const activateMarkdownLinkRef = useRef(activateMarkdownLink);
   activateMarkdownLinkRef.current = activateMarkdownLink;
   const resolveWorkspaceImageRef = useRef(resolveWorkspaceImage);
   resolveWorkspaceImageRef.current = resolveWorkspaceImage;
   const importWorkspaceImageFilesRef = useRef(importWorkspaceImageFiles);
   importWorkspaceImageFilesRef.current = importWorkspaceImageFiles;
+  const importNativeDroppedImageRef = useRef(importNativeDroppedImage);
+  importNativeDroppedImageRef.current = importNativeDroppedImage;
   const pendingTexts = useRef(
     new Map<string, string>([[initialDocument.session.id, ""]]),
   );
@@ -1372,6 +1375,30 @@ export function AppShell({
     };
   }, [documentAdapter, recoveryReady]);
 
+  useEffect(() => {
+    if (!documentAdapter || !recoveryReady) return;
+    let disposed = false;
+    let unsubscribe: (() => void) | null = null;
+    void documentAdapter
+      .subscribeDroppedImages((path) => {
+        if (disposed) return;
+        nativeImageDropQueue.current = nativeImageDropQueue.current
+          .catch(() => undefined)
+          .then(() => importNativeDroppedImageRef.current(path));
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unsubscribe = stop;
+      })
+      .catch((error: unknown) => {
+        if (!disposed) setNotice(`无法监听拖入图片：${getErrorMessage(error)}`);
+      });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, [documentAdapter, recoveryReady]);
+
   function refreshRecentDocuments() {
     if (!documentAdapter) return;
     void documentAdapter
@@ -1642,14 +1669,13 @@ export function AppShell({
     const currentFolder = folderWorkspaceRef.current;
     if (
       !documentAdapter ||
-      currentFolder === null ||
-      sourceTab === undefined ||
-      sourceTab.session.path === null
+      sourceTab?.session.path === null ||
+      sourceTab === undefined
     ) {
       return null;
     }
     const sourcePath = sourceTab.session.path;
-    const sourceEntry = currentFolder.entries.find(
+    const sourceEntry = currentFolder?.entries.find(
       (entry) =>
         entry.kind === "file" &&
         pathIsWithinWorkspaceEntry(
@@ -1658,12 +1684,13 @@ export function AppShell({
           entry.relativePath,
         ),
     );
-    if (sourceEntry === undefined) return null;
-    return documentAdapter.readWorkspaceImage(
-      currentFolder.root,
-      sourceEntry.relativePath,
-      target,
-    );
+    return sourceEntry === undefined || currentFolder === null
+      ? documentAdapter.readDocumentImage(sourcePath, target)
+      : documentAdapter.readWorkspaceImage(
+          currentFolder.root,
+          sourceEntry.relativePath,
+          target,
+        );
   }
 
   async function openFolderDocument(
@@ -1785,18 +1812,12 @@ export function AppShell({
   }
 
   async function importFolderImage(): Promise<boolean> {
-    if (
-      !documentAdapter ||
-      folderWorkspace === null ||
-      busy ||
-      session.path === null ||
-      session.readOnly
-    ) {
-      setNotice("请先在当前工作区打开一个可编辑的 Markdown 文档。");
+    if (!documentAdapter || busy || session.path === null || session.readOnly) {
+      setNotice("请先保存并打开一个可编辑的 Markdown 文档。");
       return false;
     }
     const sourcePath = session.path;
-    const sourceEntry = folderWorkspace.entries.find(
+    const sourceEntry = folderWorkspace?.entries.find(
       (entry) =>
         entry.kind === "file" &&
         pathIsWithinWorkspaceEntry(
@@ -1806,17 +1827,20 @@ export function AppShell({
         ),
     );
     const sourceEditor = editors.current.get(activeDocumentId)?.editor;
-    if (sourceEntry === undefined || sourceEditor === undefined) {
-      setNotice("当前文档不属于已授权工作区，无法导入图片。");
+    if (sourceEditor === undefined) {
+      setNotice("当前文档尚未准备好，无法插入图片。");
       return false;
     }
     setBusy(true);
     setNotice(null);
     try {
-      const imported = await documentAdapter.importWorkspaceImage(
-        folderWorkspace.root,
-        sourceEntry.relativePath,
-      );
+      const imported =
+        sourceEntry === undefined || folderWorkspace === null
+          ? await documentAdapter.importDocumentImage(sourcePath)
+          : await documentAdapter.importWorkspaceImage(
+              folderWorkspace.root,
+              sourceEntry.relativePath,
+            );
       if (imported === null) {
         setNotice("已取消导入图片。");
         return false;
@@ -1829,10 +1853,12 @@ export function AppShell({
       ) {
         throw new Error("无法在当前只读文档中插入图片引用");
       }
-      const refreshed = await documentAdapter.refreshWorkspace(
-        folderWorkspace.root,
-      );
-      setFolderWorkspace(refreshed);
+      if (sourceEntry !== undefined && folderWorkspace !== null) {
+        const refreshed = await documentAdapter.refreshWorkspace(
+          folderWorkspace.root,
+        );
+        setFolderWorkspace(refreshed);
+      }
       setNotice(`已导入图片：${imported.relativePath}`);
       return true;
     } catch (error) {
@@ -1854,16 +1880,15 @@ export function AppShell({
     const currentFolder = folderWorkspaceRef.current;
     if (
       !documentAdapter ||
-      currentFolder === null ||
       sourceTab === undefined ||
       sourceTab.session.path === null ||
       sourceTab.session.readOnly
     ) {
-      setNotice("剪贴板和拖放图片只能导入当前已授权工作区的可编辑文档。");
+      setNotice("请先保存并打开一个可编辑的 Markdown 文档，再导入图片。");
       return;
     }
     const sourcePath = sourceTab.session.path;
-    const sourceEntry = currentFolder.entries.find(
+    const sourceEntry = currentFolder?.entries.find(
       (entry) =>
         entry.kind === "file" &&
         pathIsWithinWorkspaceEntry(
@@ -1873,8 +1898,8 @@ export function AppShell({
         ),
     );
     const sourceEditor = editors.current.get(documentId)?.editor;
-    if (sourceEntry === undefined || sourceEditor === undefined) {
-      setNotice("当前文档不属于已授权工作区，无法导入图片。");
+    if (sourceEditor === undefined) {
+      setNotice("当前文档尚未准备好，无法插入图片。");
       return;
     }
 
@@ -1885,12 +1910,20 @@ export function AppShell({
     try {
       for (const [index, file] of files.entries()) {
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const imported = await documentAdapter.importWorkspaceImageData(
-          currentFolder.root,
-          sourceEntry.relativePath,
-          importedImageFileName(file, index),
-          bytes,
-        );
+        const fileName = importedImageFileName(file, index);
+        const imported =
+          sourceEntry === undefined || currentFolder === null
+            ? await documentAdapter.importDocumentImageData(
+                sourcePath,
+                fileName,
+                bytes,
+              )
+            : await documentAdapter.importWorkspaceImageData(
+                currentFolder.root,
+                sourceEntry.relativePath,
+                fileName,
+                bytes,
+              );
         if (
           !sourceEditor.insertImageReference(
             imported.markdownPath,
@@ -1901,13 +1934,19 @@ export function AppShell({
         }
         importedCount += 1;
       }
-      const refreshed = await documentAdapter.refreshWorkspace(
-        currentFolder.root,
-      );
-      setFolderWorkspace(refreshed);
+      if (sourceEntry !== undefined && currentFolder !== null) {
+        const refreshed = await documentAdapter.refreshWorkspace(
+          currentFolder.root,
+        );
+        setFolderWorkspace(refreshed);
+      }
       setNotice(`已导入 ${importedCount} 张图片。`);
     } catch (error) {
-      if (importedCount > 0) {
+      if (
+        importedCount > 0 &&
+        sourceEntry !== undefined &&
+        currentFolder !== null
+      ) {
         try {
           const refreshed = await documentAdapter.refreshWorkspace(
             currentFolder.root,
@@ -1920,6 +1959,52 @@ export function AppShell({
       setNotice(
         `${importedCount > 0 ? `已导入 ${importedCount} 张；` : ""}图片导入失败：${getErrorMessage(error)}`,
       );
+    } finally {
+      imageImportBusy.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function importNativeDroppedImage(path: string): Promise<void> {
+    if (!documentAdapter || imageImportBusy.current) return;
+    const current = workspaceRef.current;
+    const sourceTab = current.tabs.find((tab) => tab.id === current.activeId);
+    const sourceEditor = editors.current.get(current.activeId)?.editor;
+    if (
+      sourceTab?.session.path === null ||
+      sourceTab === undefined ||
+      sourceTab.session.readOnly ||
+      sourceEditor === undefined
+    ) {
+      setNotice("请先保存并打开一个可编辑的 Markdown 文档，再拖入图片。");
+      return;
+    }
+    imageImportBusy.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const imported = await documentAdapter.importDroppedDocumentImage(
+        sourceTab.session.path,
+        path,
+      );
+      if (
+        !sourceEditor.insertImageReference(
+          imported.markdownPath,
+          imported.suggestedAlt,
+        )
+      ) {
+        throw new Error("无法在当前文档中插入图片引用");
+      }
+      const currentFolder = folderWorkspaceRef.current;
+      if (currentFolder !== null) {
+        const refreshed = await documentAdapter.refreshWorkspace(
+          currentFolder.root,
+        );
+        setFolderWorkspace(refreshed);
+      }
+      setNotice(`已导入图片：${imported.relativePath}`);
+    } catch (error) {
+      setNotice(`拖入图片失败：${getErrorMessage(error)}`);
     } finally {
       imageImportBusy.current = false;
       setBusy(false);
@@ -3918,7 +4003,13 @@ export function AppShell({
                 data-toolbar-index={toolbarIndex}
                 tabIndex={toolbarTabStopIndex === toolbarIndex ? 0 : -1}
                 onFocus={() => setToolbarFocusIndex(toolbarIndex)}
-                onClick={() => editor.current?.format(action.command)}
+                onClick={() => {
+                  if (action.command === "image" && documentAdapter) {
+                    void importFolderImage();
+                  } else {
+                    editor.current?.format(action.command);
+                  }
+                }}
               >
                 {action.label}
               </button>
@@ -3939,7 +4030,11 @@ export function AppShell({
                   title={action.title}
                   disabled={!recoveryReady || session.readOnly}
                   onClick={(event) => {
-                    editor.current?.format(action.command);
+                    if (action.command === "image" && documentAdapter) {
+                      void importFolderImage();
+                    } else {
+                      editor.current?.format(action.command);
+                    }
                     event.currentTarget
                       .closest(".format-menu")
                       ?.removeAttribute("open");

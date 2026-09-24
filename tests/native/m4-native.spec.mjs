@@ -568,6 +568,77 @@ describe("M4 native Tauri acceptance", () => {
     await waitForSource(editor, unsavedSource);
   });
 
+  it("previews and imports local images in a single opened document", async () => {
+    const file = nativeFixturePath(process.env.MDEDITOR_NATIVE_RUN_DIR);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlwsAAAAASUVORK5CYII=",
+      "base64",
+    );
+    await writeFile(path.join(path.dirname(file), "本地图.png"), png);
+    const editor = await $(
+      '.editor-document-host:not([hidden]) [role="textbox"]',
+    );
+    await replaceEditorSource(
+      editor,
+      "# 单文件图片\n\n![本地图](%E6%9C%AC%E5%9C%B0%E5%9B%BE.png)",
+    );
+    await browser.waitUntil(async () => {
+      const image = await $(".cm-md-image-widget img");
+      return (await image.isExisting()) && (await image.isDisplayed());
+    });
+    const directImageButton = await $(
+      '.editor-toolbar > button[aria-label="插入图片"]',
+    );
+    if (
+      (await directImageButton.isExisting()) &&
+      (await directImageButton.isDisplayed())
+    ) {
+      await directImageButton.click();
+    } else {
+      await $("details.format-menu > summary").click();
+      await $(
+        'details.format-menu .format-panel button[aria-label="插入图片"]',
+      ).click();
+    }
+    await browser.waitUntil(async () =>
+      (await readEditorSource(editor)).includes(
+        "assets/%E9%80%89%E6%8B%A9%E5%9B%BE.png",
+      ),
+    );
+    assert.deepEqual(
+      await readFile(path.join(path.dirname(file), "assets", "选择图.png")),
+      png,
+    );
+    await browser.execute(
+      (element, imageBytes) => {
+        const transfer = new window.DataTransfer();
+        transfer.items.add(
+          new window.File([new Uint8Array(imageBytes)], "粘贴图片.png", {
+            type: "image/png",
+          }),
+        );
+        element.dispatchEvent(
+          new window.ClipboardEvent("paste", {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: transfer,
+          }),
+        );
+      },
+      editor,
+      [...png],
+    );
+    await browser.waitUntil(async () =>
+      (await readEditorSource(editor)).includes(
+        "assets/%E7%B2%98%E8%B4%B4%E5%9B%BE%E7%89%87.png",
+      ),
+    );
+    assert.deepEqual(
+      await readFile(path.join(path.dirname(file), "assets", "粘贴图片.png")),
+      png,
+    );
+  });
+
   it("searches and saves a Chinese-path repository in the native workspace", async () => {
     await openFileMenu();
     await exactButton("打开文件夹").then((button) => button.click());

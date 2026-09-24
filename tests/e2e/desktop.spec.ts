@@ -198,6 +198,7 @@ async function installNativeAdapterMock(
         };
         __MDEDITOR_E2E_EMIT_WORKSPACE__?: () => void;
         __MDEDITOR_E2E_EMIT_EXTERNAL__?: (name: string, source: string) => void;
+        __MDEDITOR_E2E_EMIT_IMAGE_DROP__?: (path: string) => void;
       };
       eventRuntime.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
         unregisterListener: (_event, eventId) => {
@@ -229,6 +230,16 @@ async function installNativeAdapterMock(
                 diskFingerprint: `mock-external-${name}`,
               },
             },
+          });
+        }
+      };
+      eventRuntime.__MDEDITOR_E2E_EMIT_IMAGE_DROP__ = (path) => {
+        for (const [id, listener] of eventListeners) {
+          if (listener.event !== "external-image-dropped") continue;
+          callbacks.get(listener.handler)?.({
+            event: listener.event,
+            id,
+            payload: path,
           });
         }
       };
@@ -381,6 +392,21 @@ async function installNativeAdapterMock(
                   suggestedAlt: "封面 (终稿)",
                 };
               }
+              case "import_document_image":
+              case "import_dropped_document_image":
+              case "import_document_image_data":
+                saveState(state);
+                return {
+                  relativePath: "assets/本地图.png",
+                  markdownPath: "assets/%E6%9C%AC%E5%9C%B0%E5%9B%BE.png",
+                  suggestedAlt: "本地图",
+                };
+              case "read_document_image":
+                saveState(state);
+                return {
+                  dataUrl:
+                    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                };
               case "read_workspace_image":
                 saveState(state);
                 if (options.failWorkspaceImageRead) {
@@ -3087,6 +3113,67 @@ test("startup arguments and native file drops open Markdown tabs", async ({
   await expect.poll(() => readEditorSource(editor)).toBe("# 拖入文件");
   await expect(page.getByRole("tab", { name: /拖入/u })).toBeVisible();
   await expect(page.getByRole("tab")).toHaveCount(2);
+});
+
+test("single opened Markdown file can preview, select, and drop local images", async ({
+  page,
+}) => {
+  await installNativeAdapterMock(page, {
+    startupMarkdown:
+      "# 单文件\n\n![原图](assets/%E6%9C%AC%E5%9C%B0%E5%9B%BE.png)",
+  });
+  await page.goto("/");
+  const editor = page.getByRole("textbox", { name: "Markdown 源码编辑器" });
+  await expect.poll(() => readEditorSource(editor)).toContain("![原图]");
+  await expect(page.locator(".cm-md-image-widget img")).toBeVisible();
+  await page.getByRole("radio", { name: "双栏" }).click();
+  await expect(
+    page.frameLocator('iframe[title="Markdown 实时预览"]').locator("img"),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: "混合" }).click();
+  await clickMoreFormat(page, "插入图片");
+  await expect
+    .poll(() => readEditorSource(editor))
+    .toContain("![本地图](assets/");
+
+  await editor.evaluate((element) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File(
+        [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])],
+        "拖入.png",
+        {
+          type: "image/png",
+        },
+      ),
+    );
+    element.dispatchEvent(
+      new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+      }),
+    );
+  });
+  await expect(page.getByRole("status")).toContainText("已导入 1 张图片");
+  await page.evaluate(() => {
+    const runtime = window as typeof window & {
+      __MDEDITOR_E2E_EMIT_IMAGE_DROP__?: (path: string) => void;
+    };
+    runtime.__MDEDITOR_E2E_EMIT_IMAGE_DROP__?.("C:\\图片\\本地图.png");
+  });
+  await expect(page.getByRole("status")).toContainText(
+    "已导入图片：assets/本地图.png",
+  );
+  const commands = (await readNativeMockState(page)).commands;
+  expect(commands).toEqual(
+    expect.arrayContaining([
+      "read_document_image",
+      "import_document_image",
+      "import_document_image_data",
+      "import_dropped_document_image",
+    ]),
+  );
 });
 
 test("launch starts without an untitled tab and first editing or open creates one", async ({
